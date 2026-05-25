@@ -2,7 +2,9 @@
 
 ## What This Project Is
 
-A Java 21+ MCP server that maintains a PostgreSQL-backed index of source code repositories. It clones repos on first boot, installs git hooks for live change detection via a file-based event queue, and exposes a token-efficient query interface to Claude Code.
+A Java 21+ MCP server that maintains a PostgreSQL-backed index of source code repositories. It clones repos on first boot, installs git hooks for live change detection via a PostgreSQL event queue, and exposes a token-efficient query interface to Claude Code.
+
+Designed for large financial institutions: pluggable enterprise auth, stateless cloud deployment, multi-instance scaling.
 
 **Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter (JNI), MCP protocol (stdio + SSE)
 
@@ -16,17 +18,19 @@ Claude Code <--MCP/stdio|SSE--> MCP Server
                         +-----------+-----------+
                         |                       |
                   Repository Manager      Indexing Pipeline
-                        |                       |
-                  Git Clones ---hooks---> Event Queue (fs)
-                                                |
-                                          PostgreSQL
+                        |                       |        \
+                  Git Clones ---hooks--> Webhook --> PostgreSQL
+                        |                          (index + event queue)
+                  AuthProvider
+                   (pluggable)
 ```
 
 - **MCP Server:** Exposes 10 tools (9 query + 1 health). stdio for local, SSE for cloud.
-- **Repository Manager:** Clones repos, manages auth (SSH keys / tokens), installs git hooks.
-- **Event Queue:** File-based. Hooks write JSON files to a watched directory. Resilient to server restarts.
-- **Indexing Pipeline:** Tree-sitter for structural parsing (Java, Python, TS/JS, Go). Full-text + metadata for all other languages.
-- **PostgreSQL:** 6 tables — repositories, files, symbols, imports, type_relationships, file_contents.
+- **Webhook Endpoint:** HTTP POST receiver for git hooks. Inserts events into PostgreSQL queue.
+- **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
+- **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
+- **AuthProvider:** Pluggable interface supporting SSH, tokens, OAuth2, mTLS, Kerberos, GCM, Vault, AWS/GCP secret managers.
+- **PostgreSQL:** 7 tables — repositories, files, symbols, imports, type_relationships, file_contents, indexing_events.
 
 ## Prerequisites
 
@@ -46,7 +50,6 @@ Claude Code <--MCP/stdio|SSE--> MCP Server
 
 ### 1. Start PostgreSQL
 
-If using Docker:
 ```bash
 docker run -d --name indexer-pg \
   -e POSTGRES_DB=source_code_index \
@@ -62,12 +65,12 @@ docker run -d --name indexer-pg \
 mkdir -p ~/.source-code-indexer
 cat > ~/.source-code-indexer/config.yaml << 'EOF'
 server:
-  eventQueueDir: ~/.source-code-indexer/events
   cloneBaseDir: ~/.source-code-indexer/repos
   maxFileSizeBytes: 1048576
   indexWorkers: 4
   transport: stdio
   ssePort: 8080
+  webhookPort: 8081
 
 database:
   host: localhost
@@ -95,12 +98,11 @@ export DB_PASSWORD=changeme
 ./gradlew run
 ```
 
-On first boot, the server will: clone all configured repos, run Flyway migrations, perform a full index, then start listening for MCP requests and file-based events.
+On first boot: clones all configured repos, runs Flyway migrations, performs full index, starts MCP server + webhook endpoint + event queue poller.
 
 ### 4. Configure Claude Code to use this MCP server
 
-Add to your Claude Code MCP config (`~/.claude/mcp_servers.json` or project-level `.claude/mcp_servers.json`):
-
+**Local (stdio):**
 ```json
 {
   "source-code-indexer": {
@@ -114,7 +116,7 @@ Add to your Claude Code MCP config (`~/.claude/mcp_servers.json` or project-leve
 }
 ```
 
-For remote (cloud) deployment using SSE transport:
+**Remote (SSE):**
 ```json
 {
   "source-code-indexer": {
@@ -130,39 +132,46 @@ For remote (cloud) deployment using SSE transport:
 docker compose up -d
 ```
 
-This starts both the indexer and PostgreSQL containers. Mount your config file and SSH keys as volumes.
+Starts both indexer and PostgreSQL. Mount config and SSH keys as volumes.
 
 ## How to Test
 
-### Unit tests
 ```bash
+# Unit tests
 ./gradlew test
-```
 
-### Integration tests (requires Docker for Testcontainers)
-```bash
+# Integration tests (requires Docker for Testcontainers)
 ./gradlew integrationTest
-```
 
-### End-to-end tests
-```bash
+# End-to-end tests
 ./gradlew e2eTest
 ```
 
 ## New Developer Onboarding — Getting Claude Code Context on a GitHub Project
 
-If you're new to a company and want to give Claude Code rich, indexed context over an arbitrary GitHub project, here's what to do:
+### The Quick Way (with `connect-index` skill)
 
-### Step 1: Install prerequisites
+If the indexer is already running and the repo is already indexed:
+
+```bash
+git clone git@github.com:your-company/backend-api.git
+cd backend-api
+claude
+> /connect-index
+```
+
+The skill detects your repo, verifies it's indexed, writes `.claude/mcp_servers.json`, and shows sample commands.
+
+### The Manual Way (from scratch)
+
+#### Step 1: Install prerequisites
 
 ```bash
 # macOS
 brew install openjdk@21 gradle postgresql@16 git docker
-
-# Or just ensure Docker is running — PostgreSQL can run in a container
 ```
 
-### Step 2: Clone this project and build
+#### Step 2: Clone this project and build
 
 ```bash
 git clone <this-repo-url>
@@ -170,28 +179,25 @@ cd SourceCodeIndexerMCP
 ./gradlew build
 ```
 
-### Step 3: Get your repo credentials ready
+#### Step 3: Get your repo credentials ready
 
-You need auth for the private repos you want to index:
-- **SSH:** Ensure your SSH key is in `~/.ssh/` and added to GitHub/GitLab
+- **SSH:** Ensure key is in `~/.ssh/` and added to GitHub/GitLab
 - **Token:** Create a personal access token with repo read access
+- **Vault:** Ensure vault address and token are available
+- **mTLS:** Ensure client cert and key are available
 
-### Step 4: Create your config
+#### Step 4: Create your config
 
-```bash
-mkdir -p ~/.source-code-indexer
-```
-
-Edit `~/.source-code-indexer/config.yaml` and add each repo you want indexed:
+Edit `~/.source-code-indexer/config.yaml`:
 
 ```yaml
 server:
-  eventQueueDir: ~/.source-code-indexer/events
   cloneBaseDir: ~/.source-code-indexer/repos
   maxFileSizeBytes: 1048576
   indexWorkers: 4
   transport: stdio
   ssePort: 8080
+  webhookPort: 8081
 
 database:
   host: localhost
@@ -201,7 +207,6 @@ database:
   password: ${DB_PASSWORD}
 
 repositories:
-  # Add every repo you want Claude to know about:
   - url: git@github.com:your-company/backend-api.git
     branch: main
     auth:
@@ -219,7 +224,7 @@ repositories:
       token: ${GITHUB_TOKEN}
 ```
 
-### Step 5: Start PostgreSQL and the indexer
+#### Step 5: Start PostgreSQL and the indexer
 
 ```bash
 # Option A: Docker Compose (easiest)
@@ -234,15 +239,15 @@ docker run -d --name indexer-pg \
   postgres:16
 
 export DB_PASSWORD=changeme
-export GITHUB_TOKEN=ghp_your_token  # if using token auth
+export GITHUB_TOKEN=ghp_your_token
 ./gradlew run
 ```
 
-The first boot will clone all repos and run a full index. For large codebases this may take several minutes — watch the logs.
+First boot clones all repos and runs full index. Watch logs for progress.
 
-### Step 6: Wire it into Claude Code
+#### Step 6: Wire into Claude Code
 
-Add the MCP server to your Claude Code config:
+Add to `.claude/mcp_servers.json` in your project:
 
 ```json
 {
@@ -258,17 +263,17 @@ Add the MCP server to your Claude Code config:
 }
 ```
 
-### Step 7: Verify it works
+#### Step 7: Verify
 
-In Claude Code, ask:
-- "Use get_index_health to check the indexer status" — confirms all repos cloned and indexed
-- "Use get_repo_summary for backend-api" — see language breakdown, file count
+In Claude Code:
+- "Use get_index_health to check the indexer" — confirms all repos indexed
+- "Use get_repo_summary for backend-api" — see language breakdown
 - "Use search_symbols to find all classes named Controller" — structural query
 - "Use search_code for authentication" — full-text search
 
-### Step 8: Keep it running
+#### Step 8: Keep it running
 
-As long as the server is running, git hooks in the cloned repos fire on every commit/merge/rebase and the index stays current automatically. If you stop the server, events queue up as files and get processed when it restarts.
+Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get processed automatically. If the server restarts, pending events in PostgreSQL are picked up immediately.
 
 ## MCP Tools Reference
 
@@ -285,10 +290,28 @@ As long as the server is running, git hooks in the cloned repos fire on every co
 | `get_directory_tree` | Directory tree | Nested structure with types |
 | `get_index_health` | System health check | Per-repo status, errors, queue state |
 
+## Supported Auth Types
+
+| Type | Use case |
+|------|----------|
+| `ssh-key` | GitHub, GitLab, Bitbucket |
+| `token` | PAT for any git host |
+| `oauth2` | Enterprise SSO-integrated hosting |
+| `client-cert` | mTLS (common in finance) |
+| `kerberos` | Active Directory environments |
+| `git-credential-manager` | OS-level credential store |
+| `vault` | HashiCorp Vault |
+| `aws-secrets-manager` | AWS Secrets Manager |
+| `gcp-secret-manager` | GCP Secret Manager |
+
+Custom providers: implement `AuthProvider` interface, drop JAR on classpath.
+
 ## Project Conventions
 
 - Flyway for DB migrations (in `src/main/resources/db/migration/`)
 - Tree-sitter query files (`.scm`) per language (in `src/main/resources/queries/`)
 - Config supports `${ENV_VAR}` substitution for secrets
-- Structured JSON logging to `~/.source-code-indexer/logs/indexer.log`
-- Event files: `{timestamp}-{repo-name}-{event-type}.json`
+- Structured JSON logging
+- Credentials never stored in database — only auth type and config references
+- Admin API at `/admin/*` for future UI integration
+- Event queue in PostgreSQL — no filesystem state beyond repo clones
