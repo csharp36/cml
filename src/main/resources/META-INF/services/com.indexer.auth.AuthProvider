@@ -1,0 +1,3 @@
+# This file is intentionally empty.
+# Add fully-qualified class names of AuthProvider implementations from plugin JARs here,
+# one per line, to have them automatically registered via ServiceLoader.
