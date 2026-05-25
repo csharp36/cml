@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: source_code_index
+      POSTGRES_USER: indexer
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U indexer -d source_code_index"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    volumes:
+      - repos:/data/repos
+      - ./config.yaml:/config/config.yaml:ro
+    command: ["java", "-jar", "app.jar", "/config/config.yaml"]
+
+volumes:
+  pgdata:
+  repos:
