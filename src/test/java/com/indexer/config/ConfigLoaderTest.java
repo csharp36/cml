@@ -1,0 +1,118 @@
+package com.indexer.config;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ConfigLoaderTest {
+
+    private static final String FULL_YAML = """
+            server:
+              cloneBaseDir: /tmp/repos
+              maxFileSizeBytes: 2097152
+              indexWorkers: 8
+              transport: sse
+              ssePort: 9090
+              webhookPort: 9091
+
+            database:
+              host: localhost
+              port: 5432
+              name: indexer_db
+              username: admin
+              password: secret
+
+            repositories:
+              - url: https://github.com/example/repo.git
+                branch: develop
+                auth:
+                  type: token
+                  token: ghp_abc123
+
+            languages:
+              customExtensions:
+                .myext: java
+                .tpl: html
+            """;
+
+    private static final String ENV_VAR_YAML = """
+            server:
+              cloneBaseDir: /tmp/repos
+
+            database:
+              host: localhost
+              name: indexer_db
+              password: ${TEST_DB_PASSWORD}
+            """;
+
+    private static final String MISSING_REQUIRED_YAML = """
+            database:
+              host: localhost
+              name: indexer_db
+            """;
+
+    @Test
+    void loadsValidConfig() throws IOException {
+        ConfigLoader loader = new ConfigLoader();
+        IndexerConfig config = loader.load(toStream(FULL_YAML));
+
+        // Server
+        assertThat(config.server().cloneBaseDir()).isEqualTo("/tmp/repos");
+        assertThat(config.server().maxFileSizeBytes()).isEqualTo(2_097_152L);
+        assertThat(config.server().indexWorkers()).isEqualTo(8);
+        assertThat(config.server().transport()).isEqualTo("sse");
+        assertThat(config.server().ssePort()).isEqualTo(9090);
+        assertThat(config.server().webhookPort()).isEqualTo(9091);
+
+        // Database
+        assertThat(config.database().host()).isEqualTo("localhost");
+        assertThat(config.database().port()).isEqualTo(5432);
+        assertThat(config.database().name()).isEqualTo("indexer_db");
+        assertThat(config.database().username()).isEqualTo("admin");
+        assertThat(config.database().password()).isEqualTo("secret");
+        assertThat(config.database().jdbcUrl()).isEqualTo("jdbc:postgresql://localhost:5432/indexer_db");
+
+        // Repositories
+        assertThat(config.repositories()).hasSize(1);
+        IndexerConfig.RepositoryConfig repo = config.repositories().get(0);
+        assertThat(repo.url()).isEqualTo("https://github.com/example/repo.git");
+        assertThat(repo.branch()).isEqualTo("develop");
+        assertThat(repo.auth().type()).isEqualTo("token");
+        assertThat(repo.auth().get("token")).isEqualTo("ghp_abc123");
+
+        // Languages
+        assertThat(config.languages().customExtensions()).containsEntry(".myext", "java");
+        assertThat(config.languages().customExtensions()).containsEntry(".tpl", "html");
+    }
+
+    @Test
+    void substitutesEnvironmentVariables() throws IOException {
+        ConfigLoader loader = new ConfigLoader(varName -> {
+            if ("TEST_DB_PASSWORD".equals(varName)) return "super-secret-password";
+            return null;
+        });
+
+        IndexerConfig config = loader.load(toStream(ENV_VAR_YAML));
+
+        assertThat(config.database().password()).isEqualTo("super-secret-password");
+    }
+
+    @Test
+    void throwsOnMissingRequiredFields() {
+        ConfigLoader loader = new ConfigLoader();
+
+        assertThatThrownBy(() -> loader.load(toStream(MISSING_REQUIRED_YAML)))
+                .isInstanceOf(ConfigValidationException.class)
+                .hasMessageContaining("server");
+    }
+
+    private InputStream toStream(String yaml) {
+        return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
+    }
+}
