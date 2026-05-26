@@ -4,6 +4,7 @@ import com.indexer.db.EventDao;
 import com.indexer.webhook.WebhookPayload;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
+import io.javalin.http.staticfiles.Location;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,8 +20,16 @@ public class HttpServer {
     }
 
     public Javalin createApp() {
-        app = Javalin.create();
+        app = Javalin.create(config -> {
+            config.staticFiles.add(staticFiles -> {
+                staticFiles.hostedPath = "/admin/ui";
+                staticFiles.directory = "admin-ui/dist";
+                staticFiles.location = Location.EXTERNAL;
+            });
+        });
         app.post("/webhook", this::handleWebhook);
+        // SPA fallback — serve index.html for all unmatched /admin/ui/* routes
+        app.get("/admin/ui/*", ctx -> ctx.redirect("/admin/ui/"));
         return app;
     }
 

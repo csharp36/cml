@@ -343,6 +343,36 @@ curl -X POST http://localhost:8080/admin/repos \
 
 Returns 202 — clone and indexing run in the background.
 
+## Admin UI
+
+React SPA dashboard served at `http://localhost:8080/admin/ui/`.
+
+### Development
+
+```bash
+# Terminal 1: Java server
+export DB_PASSWORD=changeme ADMIN_TOKEN=dev-token
+./gradlew run
+
+# Terminal 2: Vite dev server
+cd admin-ui && npm run dev
+# Opens at http://localhost:5173/admin/ui/
+```
+
+### Production
+
+The UI is built into `admin-ui/dist/` and served by Javalin as static files. Docker builds it automatically.
+
+```bash
+cd admin-ui && npm ci && npm run build
+```
+
+### Features
+
+- **Dashboard tab:** Health stats, repository status, recent failures
+- **Repositories tab:** List, add, delete, trigger reindex
+- **Events tab:** Filter by repo/status/time, retry failed events
+
 ## Supported Auth Types
 
 | Type | Use case |
