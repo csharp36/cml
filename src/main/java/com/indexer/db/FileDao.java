@@ -75,6 +75,14 @@ public class FileDao {
         );
     }
 
+    public void deleteByRepoId(int repoId) {
+        jdbi.useHandle(handle ->
+                handle.createUpdate("DELETE FROM files WHERE repo_id = :repoId")
+                        .bind("repoId", repoId)
+                        .execute()
+        );
+    }
+
     public List<SourceFile> findByRepo(int repoId) {
         return jdbi.withHandle(handle ->
                 handle.createQuery("SELECT * FROM files WHERE repo_id = :repoId")
