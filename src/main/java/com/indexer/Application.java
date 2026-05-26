@@ -1,5 +1,7 @@
 package com.indexer;
 
+import com.indexer.admin.AdminApi;
+import com.indexer.admin.AdminService;
 import com.indexer.auth.AuthProviderRegistry;
 import com.indexer.config.ConfigLoader;
 import com.indexer.config.IndexerConfig;
@@ -30,6 +32,7 @@ public class Application {
     private McpServerBootstrap mcpServer;
     private EventQueuePoller poller;
     private ExecutorService executor;
+    private AdminService adminService;
 
     public static void main(String[] args) {
         String configPath = args.length > 0 ? args[0] : System.getProperty("user.home") + "/.source-code-indexer/config.yaml";
@@ -96,6 +99,16 @@ public class Application {
             httpServer = new HttpServer(eventDao);
             var sseTransport = new JavalinSseServerTransportProvider(new ObjectMapper());
             sseTransport.registerRoutes(httpServer.getApp());
+
+            // Create admin API
+            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi);
+            adminService = new AdminService(
+                    repoManager, repositoryDao, fileDao, symbolDao,
+                    eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+            String adminToken = config.admin() != null ? config.admin().token() : null;
+            var adminApi = new AdminApi(adminService, adminToken);
+            adminApi.registerRoutes(httpServer.getApp());
+
             httpServer.start(config.server().httpPort());
 
             // 7. Start event queue poller
@@ -134,6 +147,7 @@ public class Application {
         log.info("Shutting down...");
         if (poller != null) poller.stop();
         if (executor != null) executor.shutdownNow();
+        if (adminService != null) adminService.shutdown();
         if (mcpServer != null) mcpServer.stop();
         if (httpServer != null) httpServer.stop();
         if (dbManager != null) dbManager.close();
