@@ -37,6 +37,9 @@ class ConfigLoaderTest {
               customExtensions:
                 .myext: java
                 .tpl: html
+
+            admin:
+              token: my-secret-token
             """;
 
     private static final String ENV_VAR_YAML = """
@@ -85,6 +88,10 @@ class ConfigLoaderTest {
         // Languages
         assertThat(config.languages().customExtensions()).containsEntry(".myext", "java");
         assertThat(config.languages().customExtensions()).containsEntry(".tpl", "html");
+
+        // Admin
+        assertThat(config.admin()).isNotNull();
+        assertThat(config.admin().token()).isEqualTo("my-secret-token");
     }
 
     @Test
@@ -106,6 +113,13 @@ class ConfigLoaderTest {
         assertThatThrownBy(() -> loader.load(toStream(MISSING_REQUIRED_YAML)))
                 .isInstanceOf(ConfigValidationException.class)
                 .hasMessageContaining("server");
+    }
+
+    @Test
+    void adminConfigIsOptionalAndDefaultsToNull() throws IOException {
+        ConfigLoader loader = new ConfigLoader();
+        IndexerConfig config = loader.load(toStream(ENV_VAR_YAML));
+        assertThat(config.admin()).isNull();
     }
 
     private InputStream toStream(String yaml) {

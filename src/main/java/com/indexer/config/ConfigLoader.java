@@ -84,8 +84,9 @@ public class ConfigLoader {
         IndexerConfig.DatabaseConfig database = parseDatabase(root.get("database"));
         List<IndexerConfig.RepositoryConfig> repositories = parseRepositories(root.get("repositories"));
         IndexerConfig.LanguagesConfig languages = parseLanguages(root.get("languages"));
+        IndexerConfig.AdminConfig admin = parseAdmin(root.get("admin"));
 
-        return new IndexerConfig(server, database, repositories, languages);
+        return new IndexerConfig(server, database, repositories, languages, admin);
     }
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
@@ -153,6 +154,12 @@ public class ConfigLoader {
             });
         }
         return new IndexerConfig.LanguagesConfig(customExtensions);
+    }
+
+    private IndexerConfig.AdminConfig parseAdmin(JsonNode node) {
+        if (node == null) return null;
+        String token = textOrNull(node, "token");
+        return new IndexerConfig.AdminConfig(token);
     }
 
     private String textOrNull(JsonNode node, String field) {

@@ -10,7 +10,8 @@ public record IndexerConfig(
         ServerConfig server,
         DatabaseConfig database,
         List<RepositoryConfig> repositories,
-        LanguagesConfig languages
+        LanguagesConfig languages,
+        AdminConfig admin
 ) {
     public record ServerConfig(
             String cloneBaseDir,
@@ -62,10 +63,15 @@ public record IndexerConfig(
         }
     }
 
+    public record AdminConfig(String token) {
+        // token can be null — admin API is disabled
+    }
+
     public IndexerConfig {
         if (server == null) throw new ConfigValidationException("server section is required");
         if (database == null) throw new ConfigValidationException("database section is required");
         if (repositories == null) repositories = List.of();
         if (languages == null) languages = new LanguagesConfig(Map.of());
+        // admin can be null — admin API disabled
     }
 }
