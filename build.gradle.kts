@@ -36,8 +36,14 @@ dependencies {
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
 
-    // Tree-sitter via JNR-FFI
-    implementation("com.github.jnr:jnr-ffi:2.2.16")
+    // Tree-sitter native parsing
+    implementation("io.github.bonede:tree-sitter:0.25.3")
+    implementation("io.github.bonede:tree-sitter-java:0.23.4")
+    implementation("io.github.bonede:tree-sitter-python:0.23.4")
+    implementation("io.github.bonede:tree-sitter-javascript:0.23.1")
+    implementation("io.github.bonede:tree-sitter-typescript:0.23.2")
+    implementation("io.github.bonede:tree-sitter-go:0.23.3")
+    implementation("io.github.bonede:tree-sitter-c:0.23.2")
 
     // Logging
     implementation("ch.qos.logback:logback-classic:1.5.12")
