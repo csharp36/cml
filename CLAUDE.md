@@ -25,8 +25,8 @@ Claude Code <--MCP/stdio|SSE--> MCP Server
                    (pluggable)
 ```
 
-- **MCP Server:** Exposes 10 tools (9 query + 1 health). stdio for local, SSE for cloud.
-- **Webhook Endpoint:** HTTP POST receiver for git hooks. Inserts events into PostgreSQL queue.
+- **MCP Server:** Exposes 10 tools (9 query + 1 health). Both stdio and SSE transports always run simultaneously — stdio for local Claude Code subprocess, SSE for remote connections.
+- **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port as SSE (`/webhook`). Inserts events into PostgreSQL queue.
 - **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
 - **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
 - **AuthProvider:** Pluggable interface supporting SSH, tokens, OAuth2, mTLS, Kerberos, GCM, Vault, AWS/GCP secret managers.
@@ -68,9 +68,7 @@ server:
   cloneBaseDir: ~/.source-code-indexer/repos
   maxFileSizeBytes: 1048576
   indexWorkers: 4
-  transport: stdio
-  ssePort: 8080
-  webhookPort: 8081
+  httpPort: 8080
 
 database:
   host: localhost
@@ -98,7 +96,12 @@ export DB_PASSWORD=changeme
 ./gradlew run
 ```
 
-On first boot: clones all configured repos, runs Flyway migrations, performs full index, starts MCP server + webhook endpoint + event queue poller.
+On first boot: clones all configured repos, runs Flyway migrations, performs full index, then starts the MCP server with both transports active simultaneously:
+- **stdio** — used when Claude Code spawns the server as a subprocess (local mode)
+- **SSE** — available at `http://localhost:8080/mcp` for remote connections
+- **Webhook** — available at `http://localhost:8080/webhook` for git hook events
+
+All three are served from the single `httpPort` (default 8080).
 
 ### 4. Configure Claude Code to use this MCP server
 
@@ -195,9 +198,7 @@ server:
   cloneBaseDir: ~/.source-code-indexer/repos
   maxFileSizeBytes: 1048576
   indexWorkers: 4
-  transport: stdio
-  ssePort: 8080
-  webhookPort: 8081
+  httpPort: 8080
 
 database:
   host: localhost

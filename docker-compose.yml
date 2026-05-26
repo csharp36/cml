@@ -25,7 +25,6 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
     ports:
       - "8080:8080"
-      - "8081:8081"
     volumes:
       - repos:/data/repos
       - ./config.yaml:/config/config.yaml:ro
