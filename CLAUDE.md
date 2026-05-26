@@ -84,6 +84,9 @@ repositories:
       type: ssh-key
       keyPath: ~/.ssh/id_ed25519
 
+admin:
+  token: ${ADMIN_TOKEN}
+
 languages:
   customExtensions: {}
 EOF
@@ -93,6 +96,7 @@ EOF
 
 ```bash
 export DB_PASSWORD=changeme
+export ADMIN_TOKEN=your-secret-token
 ./gradlew run
 ```
 
@@ -223,6 +227,9 @@ repositories:
     auth:
       type: token
       token: ${GITHUB_TOKEN}
+
+admin:
+  token: ${ADMIN_TOKEN}
 ```
 
 #### Step 5: Start PostgreSQL and the indexer
@@ -290,6 +297,51 @@ Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get 
 | `get_file_summary` | File structure without content | Symbols, imports, index depth |
 | `get_directory_tree` | Directory tree | Nested structure with types |
 | `get_index_health` | System health check | Per-repo status, errors, queue state |
+
+## Admin API
+
+REST endpoints under `/admin/*` for operational management. Requires bearer token authentication.
+
+### Configuration
+
+Add to your `config.yaml`:
+
+```yaml
+admin:
+  token: ${ADMIN_TOKEN}
+```
+
+If no token is configured, all admin endpoints return 503.
+
+### Authentication
+
+All requests to `/admin/*` require:
+```
+Authorization: Bearer <your-admin-token>
+```
+
+### Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/admin/health` | System health stats |
+| `GET` | `/admin/repos` | List all repos with file counts and status |
+| `POST` | `/admin/repos` | Add a new repo (async clone + index) |
+| `DELETE` | `/admin/repos/:name` | Purge repo (DB records + disk clone) |
+| `POST` | `/admin/repos/:name/reindex` | Trigger full reindex (async) |
+| `GET` | `/admin/events` | Query events (`?repo=&status=&since=&limit=50`) |
+| `POST` | `/admin/events/:id/retry` | Retry a failed event |
+
+### Adding a Repository
+
+```bash
+curl -X POST http://localhost:8080/admin/repos \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"git@github.com:org/repo.git","branch":"main","auth":{"type":"ssh-key","keyPath":"~/.ssh/id_ed25519"}}'
+```
+
+Returns 202 — clone and indexing run in the background.
 
 ## Supported Auth Types
 
