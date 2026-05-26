@@ -224,7 +224,7 @@ No code changes to `SymbolExtractor`, `FileIndexer`, or any other component.
 - **Tree-sitter parse failure:** Log warning, fall back to regex. Never crash.
 - **Query compilation failure:** Skip that language at startup, log warning. Regex handles it.
 - **Pool exhaustion (all parsers borrowed for 30+ seconds):** `IllegalStateException` thrown. Caller (FileIndexer) catches and logs, file is skipped (existing behavior for indexing failures).
-- **Native library not found:** Tree-sitter-ng auto-extracts from JAR. If extraction fails (e.g., read-only filesystem), `TreeSitterEngine` constructor fails and `SymbolExtractor` operates in regex-only mode.
+- **Native library not found:** Tree-sitter-ng auto-extracts from JAR. If extraction fails (e.g., read-only filesystem), `TreeSitterEngine` constructor throws and the application fails to start. Tree-sitter is a required dependency, not optional.
 - **Segfault in native code:** Mitigated by bounded pool (limits blast radius) and per-parser isolation (no shared state between threads).
 
 ## 11. Testing
