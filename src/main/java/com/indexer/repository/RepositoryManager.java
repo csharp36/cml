@@ -138,4 +138,13 @@ public class RepositoryManager {
         }
         return name.isEmpty() ? "unknown" : name;
     }
+
+    public Repository addRepository(String url, String branch, IndexerConfig.AuthConfig authConfig, Path baseDir) throws IOException {
+        var repoConfig = new IndexerConfig.RepositoryConfig(url, branch, authConfig);
+        return initializeRepository(repoConfig, baseDir);
+    }
+
+    public String getCloneBaseDir() {
+        return config.server().cloneBaseDir();
+    }
 }
