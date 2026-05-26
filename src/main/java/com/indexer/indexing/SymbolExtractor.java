@@ -1,5 +1,9 @@
 package com.indexer.indexing;
 
+import com.indexer.indexing.treesitter.TreeSitterEngine;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -11,8 +15,35 @@ import java.util.regex.Pattern;
  */
 public class SymbolExtractor {
 
+    private static final Logger log = LoggerFactory.getLogger(SymbolExtractor.class);
+    private final TreeSitterEngine engine;
+
+    public SymbolExtractor() {
+        this.engine = null;
+    }
+
+    public SymbolExtractor(TreeSitterEngine engine) {
+        this.engine = engine;
+    }
+
     public List<ExtractedSymbol> extract(String source, String language) {
         if (source == null || source.isBlank()) return List.of();
+
+        if (engine != null) {
+            try {
+                List<ExtractedSymbol> result = engine.parse(source, language);
+                if (result != null) return result;
+                // null means unsupported language — fall through to regex
+            } catch (Exception e) {
+                log.warn("Tree-sitter parse failed for {}, falling back to regex: {}",
+                        language, e.getMessage());
+            }
+        }
+
+        return extractWithRegex(source, language);
+    }
+
+    private List<ExtractedSymbol> extractWithRegex(String source, String language) {
         return switch (language.toLowerCase()) {
             case "java" -> extractJava(source);
             case "python" -> extractPython(source);
