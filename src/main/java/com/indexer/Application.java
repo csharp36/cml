@@ -112,7 +112,7 @@ public class Application {
 
             // 8. Start MCP server
             mcpServer = new McpServerBootstrap(jdbi);
-            mcpServer.start();
+            mcpServer.startStdio();
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

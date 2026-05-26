@@ -1,10 +1,12 @@
 package com.indexer.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indexer.mcp.transport.JavalinSseServerTransportProvider;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,23 +15,33 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 10 MCP tools with the MCP Java SDK and starts the server over stdio.
+ * Registers all 10 MCP tools with the MCP Java SDK and starts the server over stdio or SSE.
  */
 public class McpServerBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(McpServerBootstrap.class);
 
     private final QueryExecutor queryExecutor;
-    private McpSyncServer server;
+    private McpSyncServer stdioServer;
+    private McpSyncServer sseServer;
 
     public McpServerBootstrap(Jdbi jdbi) {
         this.queryExecutor = new QueryExecutor(jdbi);
     }
 
-    public void start() {
+    public void startStdio() {
         var transport = new StdioServerTransportProvider(new ObjectMapper());
+        stdioServer = buildServer(transport);
+        log.info("MCP server started over stdio with 10 tools registered");
+    }
 
-        server = McpServer.sync(transport)
+    public void startSse(JavalinSseServerTransportProvider sseTransport) {
+        sseServer = buildServer(sseTransport);
+        log.info("MCP server started over SSE with 10 tools registered");
+    }
+
+    private McpSyncServer buildServer(McpServerTransportProvider transport) {
+        return McpServer.sync(transport)
                 .serverInfo("source-code-indexer", "1.0.0")
                 .tool(searchSymbolsTool(), this::handleSearchSymbols)
                 .tool(getSymbolDetailTool(), this::handleGetSymbolDetail)
@@ -42,13 +54,14 @@ public class McpServerBootstrap {
                 .tool(getDirectoryTreeTool(), this::handleGetDirectoryTree)
                 .tool(getIndexHealthTool(), this::handleGetIndexHealth)
                 .build();
-
-        log.info("MCP server started over stdio with 10 tools registered");
     }
 
     public void stop() {
-        if (server != null) {
-            server.closeGracefully();
+        if (sseServer != null) {
+            sseServer.closeGracefully();
+        }
+        if (stdioServer != null) {
+            stdioServer.closeGracefully();
         }
     }
 
