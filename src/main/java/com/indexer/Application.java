@@ -10,6 +10,8 @@ import com.indexer.db.*;
 import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
+import com.indexer.indexing.treesitter.TSParserPool;
+import com.indexer.indexing.treesitter.TreeSitterEngine;
 import com.indexer.mcp.McpServerBootstrap;
 import com.indexer.mcp.transport.JavalinSseServerTransportProvider;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,6 +35,7 @@ public class Application {
     private EventQueuePoller poller;
     private ExecutorService executor;
     private AdminService adminService;
+    private TSParserPool parserPool;
 
     public static void main(String[] args) {
         String configPath = args.length > 0 ? args[0] : System.getProperty("user.home") + "/.source-code-indexer/config.yaml";
@@ -65,7 +68,9 @@ public class Application {
             var authRegistry = new AuthProviderRegistry();
             var gitOps = new GitOperations();
             var languageRegistry = new LanguageRegistry(config.languages().customExtensions());
-            var symbolExtractor = new SymbolExtractor();
+            parserPool = new TSParserPool(config.server().indexWorkers());
+            var treeSitterEngine = new TreeSitterEngine(parserPool);
+            var symbolExtractor = new SymbolExtractor(treeSitterEngine);
             var fileIndexer = new FileIndexer(fileDao, symbolDao, jdbi, languageRegistry,
                     symbolExtractor, config.server().maxFileSizeBytes());
             var indexingPipeline = new IndexingPipeline(repositoryDao, fileIndexer, gitOps);
@@ -150,6 +155,7 @@ public class Application {
         if (adminService != null) adminService.shutdown();
         if (mcpServer != null) mcpServer.stop();
         if (httpServer != null) httpServer.stop();
+        if (parserPool != null) parserPool.close();
         if (dbManager != null) dbManager.close();
         log.info("Shutdown complete");
     }

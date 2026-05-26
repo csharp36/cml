@@ -11,7 +11,7 @@ import java.util.Set;
 public class LanguageRegistry {
 
     public static final Set<String> CORE_LANGUAGES = Set.of(
-            "java", "python", "typescript", "javascript", "go"
+            "java", "python", "typescript", "javascript", "go", "c"
     );
 
     public static final Set<String> BINARY_EXTENSIONS = Set.of(
