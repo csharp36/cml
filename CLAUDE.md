@@ -6,7 +6,7 @@ A Java 21+ MCP server that maintains a PostgreSQL-backed index of source code re
 
 Designed for large financial institutions: pluggable enterprise auth, stateless cloud deployment, multi-instance scaling.
 
-**Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter (JNI), MCP protocol (stdio + SSE)
+**Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter structural parsing via tree-sitter-ng (Java, Python, TypeScript/JavaScript, Go, C), MCP protocol (stdio + SSE)
 
 **Design spec:** `docs/superpowers/specs/2026-05-25-source-code-indexer-mcp-design.md`
 
@@ -362,6 +362,7 @@ Custom providers: implement `AuthProvider` interface, drop JAR on classpath.
 ## Project Conventions
 
 - Flyway for DB migrations (in `src/main/resources/db/migration/`)
+- Tree-sitter (via tree-sitter-ng) is the primary symbol extraction engine for Java, Python, TypeScript/JavaScript, Go, and C (`.c`, `.h`); regex fallback is used for languages without `.scm` query files
 - Tree-sitter query files (`.scm`) per language (in `src/main/resources/queries/`)
 - Config supports `${ENV_VAR}` substitution for secrets
 - Structured JSON logging
