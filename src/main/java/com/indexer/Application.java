@@ -9,6 +9,8 @@ import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
 import com.indexer.mcp.McpServerBootstrap;
+import com.indexer.mcp.transport.JavalinSseServerTransportProvider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indexer.queue.EventQueuePoller;
 import com.indexer.repository.GitOperations;
 import com.indexer.repository.RepositoryManager;
@@ -90,8 +92,10 @@ public class Application {
                 log.warn("{} events failed in previous runs. Use get_index_health for details.", failedCount);
             }
 
-            // 6. Start HTTP server
+            // 6. Create HTTP server with SSE transport
             httpServer = new HttpServer(eventDao);
+            var sseTransport = new JavalinSseServerTransportProvider(new ObjectMapper());
+            sseTransport.registerRoutes(httpServer.getApp());
             httpServer.start(config.server().httpPort());
 
             // 7. Start event queue poller
@@ -110,9 +114,10 @@ public class Application {
             }, 1000);
             executor.submit(poller);
 
-            // 8. Start MCP server
+            // 8. Start MCP servers (both transports)
             mcpServer = new McpServerBootstrap(jdbi);
             mcpServer.startStdio();
+            mcpServer.startSse(sseTransport);
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
@@ -129,8 +134,8 @@ public class Application {
         log.info("Shutting down...");
         if (poller != null) poller.stop();
         if (executor != null) executor.shutdownNow();
-        if (httpServer != null) httpServer.stop();
         if (mcpServer != null) mcpServer.stop();
+        if (httpServer != null) httpServer.stop();
         if (dbManager != null) dbManager.close();
         log.info("Shutdown complete");
     }
