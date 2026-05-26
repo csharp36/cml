@@ -5,7 +5,7 @@ import com.indexer.db.*;
 import com.indexer.indexing.*;
 import com.indexer.mcp.QueryExecutor;
 import com.indexer.repository.GitOperations;
-import com.indexer.webhook.WebhookServer;
+import com.indexer.server.HttpServer;
 import io.javalin.testtools.JavalinTest;
 import okhttp3.MediaType;
 import okhttp3.RequestBody;
@@ -121,8 +121,8 @@ class IntegrationSmokeTest {
         assertThat(((Number) health.get("totalPendingEvents")).intValue()).isEqualTo(0);
 
         // Verify: webhook POST inserts a pending event in DB
-        var webhookServer = new WebhookServer(eventDao);
-        var app = webhookServer.createApp();
+        var httpServer = new HttpServer(eventDao);
+        var app = httpServer.createApp();
         JavalinTest.test(app, (server, client) -> {
             var requestBody = RequestBody.create(
                     """

@@ -1,4 +1,4 @@
-package com.indexer.webhook;
+package com.indexer.server;
 
 import com.indexer.db.DatabaseManager;
 import com.indexer.db.EventDao;
@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
 @Tag("integration")
-class WebhookServerTest {
+class HttpServerTest {
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
@@ -34,8 +34,8 @@ class WebhookServerTest {
         dbManager.initialize();
         eventDao = new EventDao(dbManager.getJdbi());
         dbManager.getJdbi().useHandle(h -> h.execute("DELETE FROM indexing_events"));
-        var webhookServer = new WebhookServer(eventDao);
-        app = webhookServer.createApp();
+        var httpServer = new HttpServer(eventDao);
+        app = httpServer.createApp();
     }
 
     @Test

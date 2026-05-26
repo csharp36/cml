@@ -12,7 +12,7 @@ import com.indexer.mcp.McpServerBootstrap;
 import com.indexer.queue.EventQueuePoller;
 import com.indexer.repository.GitOperations;
 import com.indexer.repository.RepositoryManager;
-import com.indexer.webhook.WebhookServer;
+import com.indexer.server.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +24,7 @@ public class Application {
     private static final Logger log = LoggerFactory.getLogger(Application.class);
 
     private DatabaseManager dbManager;
-    private WebhookServer webhookServer;
+    private HttpServer httpServer;
     private McpServerBootstrap mcpServer;
     private EventQueuePoller poller;
     private ExecutorService executor;
@@ -90,9 +90,9 @@ public class Application {
                 log.warn("{} events failed in previous runs. Use get_index_health for details.", failedCount);
             }
 
-            // 6. Start webhook server
-            webhookServer = new WebhookServer(eventDao);
-            webhookServer.start(config.server().httpPort());
+            // 6. Start HTTP server
+            httpServer = new HttpServer(eventDao);
+            httpServer.start(config.server().httpPort());
 
             // 7. Start event queue poller
             executor = Executors.newFixedThreadPool(config.server().indexWorkers());
@@ -129,7 +129,7 @@ public class Application {
         log.info("Shutting down...");
         if (poller != null) poller.stop();
         if (executor != null) executor.shutdownNow();
-        if (webhookServer != null) webhookServer.stop();
+        if (httpServer != null) httpServer.stop();
         if (mcpServer != null) mcpServer.stop();
         if (dbManager != null) dbManager.close();
         log.info("Shutdown complete");
