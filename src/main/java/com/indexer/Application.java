@@ -92,7 +92,7 @@ public class Application {
 
             // 6. Start webhook server
             webhookServer = new WebhookServer(eventDao);
-            webhookServer.start(config.server().webhookPort());
+            webhookServer.start(config.server().httpPort());
 
             // 7. Start event queue poller
             executor = Executors.newFixedThreadPool(config.server().indexWorkers());
@@ -112,13 +112,7 @@ public class Application {
 
             // 8. Start MCP server
             mcpServer = new McpServerBootstrap(jdbi);
-
-            if ("sse".equals(config.server().transport())) {
-                log.info("MCP transport: SSE on port {} (not yet implemented)", config.server().ssePort());
-            } else {
-                log.info("MCP transport: stdio");
-                mcpServer.start();
-            }
+            mcpServer.start();
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

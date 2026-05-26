@@ -35,7 +35,7 @@ public class RepositoryManager {
         this.authRegistry = authRegistry;
         this.repositoryDao = repositoryDao;
         this.gitOperations = gitOperations;
-        String webhookUrl = "http://localhost:" + config.server().webhookPort();
+        String webhookUrl = "http://localhost:" + config.server().httpPort();
         this.hookInstaller = new HookInstaller(webhookUrl);
     }
 

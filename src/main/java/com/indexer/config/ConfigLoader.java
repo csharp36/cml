@@ -93,10 +93,8 @@ public class ConfigLoader {
         String cloneBaseDir = textOrNull(node, "cloneBaseDir");
         long maxFileSizeBytes = node.has("maxFileSizeBytes") ? node.get("maxFileSizeBytes").asLong(0) : 0;
         int indexWorkers = node.has("indexWorkers") ? node.get("indexWorkers").asInt(0) : 0;
-        String transport = textOrNull(node, "transport");
-        int ssePort = node.has("ssePort") ? node.get("ssePort").asInt(0) : 0;
-        int webhookPort = node.has("webhookPort") ? node.get("webhookPort").asInt(0) : 0;
-        return new IndexerConfig.ServerConfig(cloneBaseDir, maxFileSizeBytes, indexWorkers, transport, ssePort, webhookPort);
+        int httpPort = node.has("httpPort") ? node.get("httpPort").asInt(0) : 0;
+        return new IndexerConfig.ServerConfig(cloneBaseDir, maxFileSizeBytes, indexWorkers, httpPort);
     }
 
     private IndexerConfig.DatabaseConfig parseDatabase(JsonNode node) {

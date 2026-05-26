@@ -17,9 +17,7 @@ class ConfigLoaderTest {
               cloneBaseDir: /tmp/repos
               maxFileSizeBytes: 2097152
               indexWorkers: 8
-              transport: sse
-              ssePort: 9090
-              webhookPort: 9091
+              httpPort: 9090
 
             database:
               host: localhost
@@ -66,9 +64,7 @@ class ConfigLoaderTest {
         assertThat(config.server().cloneBaseDir()).isEqualTo("/tmp/repos");
         assertThat(config.server().maxFileSizeBytes()).isEqualTo(2_097_152L);
         assertThat(config.server().indexWorkers()).isEqualTo(8);
-        assertThat(config.server().transport()).isEqualTo("sse");
-        assertThat(config.server().ssePort()).isEqualTo(9090);
-        assertThat(config.server().webhookPort()).isEqualTo(9091);
+        assertThat(config.server().httpPort()).isEqualTo(9090);
 
         // Database
         assertThat(config.database().host()).isEqualTo("localhost");

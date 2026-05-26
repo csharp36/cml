@@ -16,17 +16,13 @@ public record IndexerConfig(
             String cloneBaseDir,
             @JsonProperty("maxFileSizeBytes") long maxFileSizeBytes,
             int indexWorkers,
-            String transport,
-            int ssePort,
-            int webhookPort
+            int httpPort
     ) {
         public ServerConfig {
             if (cloneBaseDir == null) throw new ConfigValidationException("server.cloneBaseDir is required");
             if (maxFileSizeBytes <= 0) maxFileSizeBytes = 1_048_576;
             if (indexWorkers <= 0) indexWorkers = 4;
-            if (transport == null) transport = "stdio";
-            if (ssePort <= 0) ssePort = 8080;
-            if (webhookPort <= 0) webhookPort = 8081;
+            if (httpPort <= 0) httpPort = 8080;
         }
     }
 
