@@ -103,7 +103,7 @@ public class AdminService {
                 Path baseDir = Path.of(repoManager.getCloneBaseDir());
                 var repo = repoManager.addRepository(url, branch, authConfig, baseDir);
                 operations.put(repoName, new OperationStatus("indexing", null));
-                indexingPipeline.fullIndex(repo.id(), Path.of(repo.clonePath()));
+                indexingPipeline.fullIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()));
                 operations.put(repoName, new OperationStatus("ready", null));
                 log.info("Repository {} added and indexed successfully", repoName);
             } catch (Exception e) {
@@ -164,7 +164,7 @@ public class AdminService {
 
         backgroundExecutor.submit(() -> {
             try {
-                indexingPipeline.fullIndex(repo.id(), Path.of(repo.clonePath()));
+                indexingPipeline.fullIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()));
                 operations.put(name, new OperationStatus("ready", null));
                 log.info("Reindex complete for {}", name);
             } catch (Exception e) {

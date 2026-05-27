@@ -32,7 +32,7 @@ class SearchSymbolsToolTest {
         var repoDao = new RepositoryDao(jdbi);
         int repoId = repoDao.insert(new Repository(0, "test-repo", "url", "main", "/path", "ssh-key", "abc", Instant.now()));
         var fileDao = new FileDao(jdbi);
-        int fileId = fileDao.upsert(new SourceFile(0, repoId, "src/App.java", "java", 500, "abc", Instant.now()));
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/App.java", "java", 500, "abc", Instant.now()));
         var symbolDao = new SymbolDao(jdbi);
         symbolDao.insertSymbol(new Symbol(0, fileId, "App", "class", "public class App", 1, 20, null, "public", false));
         symbolDao.insertSymbol(new Symbol(0, fileId, "run", "method", "public void run()", 5, 10, null, "public", false));

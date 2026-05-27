@@ -83,12 +83,12 @@ public class Application {
             for (var repo : repos) {
                 if (repo.lastIndexedSha() == null) {
                     log.info("Running full index for {}", repo.name());
-                    indexingPipeline.fullIndex(repo.id(), Path.of(repo.clonePath()));
+                    indexingPipeline.fullIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()));
                 } else {
                     String currentSha = gitOps.getCurrentSha(Path.of(repo.clonePath()));
                     if (!currentSha.equals(repo.lastIndexedSha())) {
                         log.info("Catching up index for {}: {} -> {}", repo.name(), repo.lastIndexedSha(), currentSha);
-                        indexingPipeline.incrementalIndex(repo.id(), Path.of(repo.clonePath()),
+                        indexingPipeline.incrementalIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()),
                                 repo.lastIndexedSha(), currentSha);
                     }
                 }
@@ -124,7 +124,7 @@ public class Application {
                     throw new RuntimeException("Unknown repo: " + event.repoName());
                 }
                 try {
-                    indexingPipeline.incrementalIndex(repo.id(), Path.of(repo.clonePath()),
+                    indexingPipeline.incrementalIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()),
                             event.previousSha(), event.currentSha());
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);

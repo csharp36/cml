@@ -41,13 +41,13 @@ public class FileIndexer {
         this.maxFileSizeBytes = maxFileSizeBytes;
     }
 
-    public void indexFile(int repoId, Path repoRoot, String relativePath, String commitSha) {
+    public void indexFile(int repoId, String branch, Path repoRoot, String relativePath, String commitSha) {
         Path filePath = repoRoot.resolve(relativePath);
         String filename = filePath.getFileName().toString();
 
         // 1. Check if binary → metadata only
         if (languageRegistry.isBinary(filename)) {
-            indexMetadataOnly(repoId, relativePath, filePath, commitSha);
+            indexMetadataOnly(repoId, branch, relativePath, filePath, commitSha);
             return;
         }
 
@@ -57,13 +57,13 @@ public class FileIndexer {
             fileSize = Files.size(filePath);
         } catch (IOException e) {
             log.warn("Could not determine size of {}: {}", filePath, e.getMessage());
-            indexMetadataOnly(repoId, relativePath, filePath, commitSha);
+            indexMetadataOnly(repoId, branch, relativePath, filePath, commitSha);
             return;
         }
 
         if (fileSize > maxFileSizeBytes) {
             log.debug("File {} exceeds max size ({} > {}), indexing metadata only", relativePath, fileSize, maxFileSizeBytes);
-            indexMetadataOnly(repoId, relativePath, filePath, commitSha);
+            indexMetadataOnly(repoId, branch, relativePath, filePath, commitSha);
             return;
         }
 
@@ -76,12 +76,12 @@ public class FileIndexer {
             content = Files.readString(filePath);
         } catch (IOException e) {
             log.warn("Could not read file {}: {}", filePath, e.getMessage());
-            indexMetadataOnly(repoId, relativePath, filePath, commitSha);
+            indexMetadataOnly(repoId, branch, relativePath, filePath, commitSha);
             return;
         }
 
         // 5. Upsert file record
-        SourceFile sourceFile = new SourceFile(0, repoId, relativePath, language, (int) fileSize, commitSha, Instant.now());
+        SourceFile sourceFile = new SourceFile(0, repoId, branch, relativePath, language, (int) fileSize, commitSha, Instant.now());
         int fileId = fileDao.upsert(sourceFile);
 
         // 6. Delete existing symbols/imports for this file (re-index)
@@ -101,7 +101,7 @@ public class FileIndexer {
         fileDao.deleteByRepoAndPath(repoId, relativePath);
     }
 
-    private void indexMetadataOnly(int repoId, String relativePath, Path filePath, String commitSha) {
+    private void indexMetadataOnly(int repoId, String branch, String relativePath, Path filePath, String commitSha) {
         long fileSize = 0;
         try {
             fileSize = Files.exists(filePath) ? Files.size(filePath) : 0;
@@ -109,7 +109,7 @@ public class FileIndexer {
             log.debug("Could not get size for metadata-only index of {}: {}", filePath, e.getMessage());
         }
         String language = languageRegistry.detectLanguage(filePath.getFileName().toString());
-        SourceFile sourceFile = new SourceFile(0, repoId, relativePath, language, (int) fileSize, commitSha, Instant.now());
+        SourceFile sourceFile = new SourceFile(0, repoId, branch, relativePath, language, (int) fileSize, commitSha, Instant.now());
         fileDao.upsert(sourceFile);
     }
 
