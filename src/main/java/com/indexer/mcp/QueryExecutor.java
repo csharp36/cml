@@ -1,5 +1,9 @@
 package com.indexer.mcp;
 
+import com.indexer.db.BranchIndexDao;
+import com.indexer.db.RepositoryDao;
+import com.indexer.indexing.IndexingPipeline;
+import com.indexer.repository.GitOperations;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,9 +22,23 @@ public class QueryExecutor {
     private static final Logger log = LoggerFactory.getLogger(QueryExecutor.class);
 
     private final Jdbi jdbi;
+    private final BranchIndexDao branchIndexDao;
+    private final IndexingPipeline indexingPipeline;
+    private final RepositoryDao repositoryDao;
+    private final GitOperations gitOps;
 
+    // Backward-compatible constructor (used in tests)
     public QueryExecutor(Jdbi jdbi) {
+        this(jdbi, null, null, null, null);
+    }
+
+    public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
+                         RepositoryDao repositoryDao, GitOperations gitOps) {
         this.jdbi = jdbi;
+        this.branchIndexDao = branchIndexDao;
+        this.indexingPipeline = indexingPipeline;
+        this.repositoryDao = repositoryDao;
+        this.gitOps = gitOps;
     }
 
     /**
@@ -28,6 +46,9 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> searchSymbols(String query, String kind, String language, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
+        if (repo != null && !repo.isBlank()) {
+            ensureBranchIndexed(repo, effectiveBranch);
+        }
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -76,6 +97,7 @@ public class QueryExecutor {
      */
     public Map<String, Object> getSymbolDetail(String repo, String filePath, String symbolName, Integer line, String branch) {
         String effectiveBranch = resolveBranch(branch);
+        ensureBranchIndexed(repo, effectiveBranch);
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -154,6 +176,9 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> findImplementations(String typeName, String repo, String branch) {
         String effectiveBranch = resolveBranch(branch);
+        if (repo != null && !repo.isBlank()) {
+            ensureBranchIndexed(repo, effectiveBranch);
+        }
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -189,6 +214,9 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> findReferences(String symbolName, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
+        if (repo != null && !repo.isBlank()) {
+            ensureBranchIndexed(repo, effectiveBranch);
+        }
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -226,6 +254,9 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> searchCode(String query, String language, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
+        if (repo != null && !repo.isBlank()) {
+            ensureBranchIndexed(repo, effectiveBranch);
+        }
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -269,6 +300,9 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> searchFiles(String pattern, String language, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
+        if (repo != null && !repo.isBlank()) {
+            ensureBranchIndexed(repo, effectiveBranch);
+        }
         return jdbi.withHandle(handle -> {
             // Convert glob * to SQL %
             String sqlPattern = pattern != null ? pattern.replace("*", "%") : "%";
@@ -312,6 +346,7 @@ public class QueryExecutor {
      */
     public Map<String, Object> getRepoSummary(String repoName, String branch) {
         String effectiveBranch = resolveBranch(branch);
+        ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
             // Get repo record
             var optRepo = handle.createQuery("""
@@ -417,6 +452,7 @@ public class QueryExecutor {
      */
     public Map<String, Object> getFileSummary(String repoName, String filePath, String branch) {
         String effectiveBranch = resolveBranch(branch);
+        ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
             var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
             sb.append("""
@@ -478,6 +514,7 @@ public class QueryExecutor {
      */
     public List<Map<String, Object>> getDirectoryTree(String repoName, String path, int depth, String branch) {
         String effectiveBranch = resolveBranch(branch);
+        ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
             String prefix = (path != null && !path.isBlank()) ? path : "";
             String pattern = prefix.isEmpty() ? "%" : (prefix.endsWith("/") ? prefix + "%" : prefix + "/%");
@@ -593,6 +630,48 @@ public class QueryExecutor {
      */
     private String resolveBranch(String branch) {
         return (branch == null || branch.isBlank()) ? "main" : branch;
+    }
+
+    /**
+     * Ensure branch index data exists. If querying a non-main branch and no branch_index
+     * record exists, attempt synchronous fault-in by indexing the branch delta from main.
+     * This is a no-op for main branch or when fault-in dependencies are not configured.
+     */
+    private void ensureBranchIndexed(String repo, String effectiveBranch) {
+        if ("main".equals(effectiveBranch)) return;
+        if (branchIndexDao == null || indexingPipeline == null || repositoryDao == null || gitOps == null) return;
+
+        // Check if we already have an index for this branch
+        var repoRecord = repositoryDao.findByName(repo);
+        if (repoRecord.isEmpty()) return;
+
+        var repoObj = repoRecord.get();
+        var existing = branchIndexDao.find(repoObj.id(), effectiveBranch);
+
+        if (existing.isPresent()) {
+            // Branch is indexed -- touch last_accessed_at to reset TTL
+            branchIndexDao.touchLastAccessed(repoObj.id(), effectiveBranch);
+            return;
+        }
+
+        // No index exists -- attempt fault-in
+        log.info("Branch '{}' not indexed for repo '{}', triggering synchronous fault-in", effectiveBranch, repo);
+        try {
+            Path repoDir = Path.of(repoObj.clonePath());
+            gitOps.fetch(repoDir, null);
+
+            if (!gitOps.remoteBranchExists(repoDir, effectiveBranch)) {
+                log.debug("Remote branch '{}' does not exist for repo '{}', falling back to main", effectiveBranch, repo);
+                return;
+            }
+
+            String branchSha = gitOps.getShaForRef(repoDir, "origin/" + effectiveBranch);
+            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, branchSha);
+            log.info("Fault-in complete for branch '{}' repo '{}'", effectiveBranch, repo);
+        } catch (Exception e) {
+            log.warn("Fault-in failed for branch '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
+            // Fall through -- query will return main-only results
+        }
     }
 
     private String readSourceLines(String clonePath, String filePath, int startLine, int endLine) {

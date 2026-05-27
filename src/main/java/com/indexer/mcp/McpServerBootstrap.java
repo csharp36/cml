@@ -25,8 +25,13 @@ public class McpServerBootstrap {
     private McpSyncServer stdioServer;
     private McpSyncServer sseServer;
 
+    // Backward-compatible constructor (used in tests)
     public McpServerBootstrap(Jdbi jdbi) {
-        this.queryExecutor = new QueryExecutor(jdbi);
+        this(new QueryExecutor(jdbi));
+    }
+
+    public McpServerBootstrap(QueryExecutor queryExecutor) {
+        this.queryExecutor = queryExecutor;
     }
 
     public void startStdio() {

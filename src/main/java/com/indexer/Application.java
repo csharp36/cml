@@ -112,7 +112,7 @@ public class Application {
             sseTransport.registerRoutes(httpServer.getApp());
 
             // Create admin API
-            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi);
+            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps);
             adminService = new AdminService(
                     repoManager, repositoryDao, fileDao, symbolDao,
                     eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
@@ -163,7 +163,7 @@ public class Application {
                     config.branches().cleanupIntervalHours(), config.branches().ttlDays());
 
             // 8. Start MCP servers (both transports)
-            mcpServer = new McpServerBootstrap(jdbi);
+            mcpServer = new McpServerBootstrap(queryExecutor);
             mcpServer.startStdio();
             mcpServer.startSse(sseTransport);
 
