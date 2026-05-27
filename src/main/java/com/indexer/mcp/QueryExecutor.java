@@ -26,18 +26,24 @@ public class QueryExecutor {
     /**
      * Search symbols by name (regex), kind, language, and repo.
      */
-    public List<Map<String, Object>> searchSymbols(String query, String kind, String language, String repo, int limit) {
+    public List<Map<String, Object>> searchSymbols(String query, String kind, String language, String repo, String branch, int limit) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder("""
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
                     SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, s.visibility,
-                           f.path AS file_path, r.name AS repo_name
+                           ef.path AS file_path, r.name AS repo_name
                     FROM symbols s
-                    JOIN files f ON s.file_id = f.id
-                    JOIN repositories r ON f.repo_id = r.id
+                    JOIN effective_files ef ON s.file_id = ef.id
+                    JOIN repositories r ON ef.repo_id = r.id
                     WHERE 1=1
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
 
             if (query != null && !query.isBlank()) {
                 sb.append(" AND s.name ~* :query");
@@ -48,7 +54,7 @@ public class QueryExecutor {
                 params.put("kind", kind);
             }
             if (language != null && !language.isBlank()) {
-                sb.append(" AND f.language = :language");
+                sb.append(" AND ef.language = :language");
                 params.put("language", language);
             }
             if (repo != null && !repo.isBlank()) {
@@ -68,19 +74,26 @@ public class QueryExecutor {
     /**
      * Get detailed information about a specific symbol, including source code, children, and type relationships.
      */
-    public Map<String, Object> getSymbolDetail(String repo, String filePath, String symbolName, Integer line) {
+    public Map<String, Object> getSymbolDetail(String repo, String filePath, String symbolName, Integer line, String branch) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder("""
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
                     SELECT s.id, s.name, s.kind, s.signature, s.start_line, s.end_line,
                            s.parent_id, s.visibility, s.is_static,
-                           f.path AS file_path, r.name AS repo_name, r.clone_path
+                           ef.path AS file_path, r.name AS repo_name, r.clone_path
                     FROM symbols s
-                    JOIN files f ON s.file_id = f.id
-                    JOIN repositories r ON f.repo_id = r.id
-                    WHERE r.name = :repo AND f.path = :filePath AND s.name = :symbolName
+                    JOIN effective_files ef ON s.file_id = ef.id
+                    JOIN repositories r ON ef.repo_id = r.id
+                    WHERE r.name = :repo AND ef.path = :filePath AND s.name = :symbolName
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
             params.put("repo", repo);
             params.put("filePath", filePath);
             params.put("symbolName", symbolName);
@@ -139,18 +152,25 @@ public class QueryExecutor {
     /**
      * Find implementations of a type by looking up 'implements' relationships.
      */
-    public List<Map<String, Object>> findImplementations(String typeName, String repo) {
+    public List<Map<String, Object>> findImplementations(String typeName, String repo, String branch) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder("""
-                    SELECT s.name AS class_name, s.signature, f.path AS file_path, r.name AS repo_name
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT s.name AS class_name, s.signature, ef.path AS file_path, r.name AS repo_name
                     FROM type_relationships tr
                     JOIN symbols s ON tr.symbol_id = s.id
-                    JOIN files f ON s.file_id = f.id
-                    JOIN repositories r ON f.repo_id = r.id
+                    JOIN effective_files ef ON s.file_id = ef.id
+                    JOIN repositories r ON ef.repo_id = r.id
                     WHERE tr.related_name = :typeName AND tr.kind = 'implements'
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
             params.put("typeName", typeName);
 
             if (repo != null && !repo.isBlank()) {
@@ -167,17 +187,24 @@ public class QueryExecutor {
     /**
      * Find files that import a given symbol name.
      */
-    public List<Map<String, Object>> findReferences(String symbolName, String repo, int limit) {
+    public List<Map<String, Object>> findReferences(String symbolName, String repo, String branch, int limit) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder("""
-                    SELECT f.path AS file_path, r.name AS repo_name, i.import_path
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT ef.path AS file_path, r.name AS repo_name, i.import_path
                     FROM imports i
-                    JOIN files f ON i.file_id = f.id
-                    JOIN repositories r ON f.repo_id = r.id
+                    JOIN effective_files ef ON i.file_id = ef.id
+                    JOIN repositories r ON ef.repo_id = r.id
                     WHERE i.import_path LIKE :pattern
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
             params.put("pattern", "%" + symbolName + "%");
 
             if (repo != null && !repo.isBlank()) {
@@ -197,23 +224,30 @@ public class QueryExecutor {
     /**
      * Full-text search across file contents using PostgreSQL tsvector/tsquery.
      */
-    public List<Map<String, Object>> searchCode(String query, String language, String repo, int limit) {
+    public List<Map<String, Object>> searchCode(String query, String language, String repo, String branch, int limit) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder("""
-                    SELECT f.path AS file_path, r.name AS repo_name,
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT ef.path AS file_path, r.name AS repo_name,
                            ts_headline('english', fc.content, plainto_tsquery('english', :query),
                                        'StartSel=<<, StopSel=>>, MaxWords=30, MinWords=10') AS matching_lines
                     FROM file_contents fc
-                    JOIN files f ON fc.file_id = f.id
-                    JOIN repositories r ON f.repo_id = r.id
+                    JOIN effective_files ef ON fc.file_id = ef.id
+                    JOIN repositories r ON ef.repo_id = r.id
                     WHERE fc.search_vector @@ plainto_tsquery('english', :query)
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
             params.put("query", query);
 
             if (language != null && !language.isBlank()) {
-                sb.append(" AND f.language = :language");
+                sb.append(" AND ef.language = :language");
                 params.put("language", language);
             }
             if (repo != null && !repo.isBlank()) {
@@ -233,23 +267,30 @@ public class QueryExecutor {
     /**
      * Search files by glob-style pattern (e.g., "*.java", "src/**").
      */
-    public List<Map<String, Object>> searchFiles(String pattern, String language, String repo, int limit) {
+    public List<Map<String, Object>> searchFiles(String pattern, String language, String repo, String branch, int limit) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
             // Convert glob * to SQL %
             String sqlPattern = pattern != null ? pattern.replace("*", "%") : "%";
 
-            var sb = new StringBuilder("""
-                    SELECT f.path, r.name AS repo_name, f.language, f.size_bytes, f.last_modified_at
-                    FROM files f
-                    JOIN repositories r ON f.repo_id = r.id
-                    WHERE f.path LIKE :pattern
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT ef.path, r.name AS repo_name, ef.language, ef.size_bytes, ef.last_modified_at
+                    FROM effective_files ef
+                    JOIN repositories r ON ef.repo_id = r.id
+                    WHERE ef.path LIKE :pattern
                     """);
 
             var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
             params.put("pattern", sqlPattern);
 
             if (language != null && !language.isBlank()) {
-                sb.append(" AND f.language = :language");
+                sb.append(" AND ef.language = :language");
                 params.put("language", language);
             }
             if (repo != null && !repo.isBlank()) {
@@ -257,7 +298,7 @@ public class QueryExecutor {
                 params.put("repo", repo);
             }
 
-            sb.append(" ORDER BY f.path LIMIT :limit");
+            sb.append(" ORDER BY ef.path LIMIT :limit");
             params.put("limit", limit);
 
             var q = handle.createQuery(sb.toString());
@@ -269,7 +310,8 @@ public class QueryExecutor {
     /**
      * Get a high-level summary of a repository.
      */
-    public Map<String, Object> getRepoSummary(String repoName) {
+    public Map<String, Object> getRepoSummary(String repoName, String branch) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
             // Get repo record
             var optRepo = handle.createQuery("""
@@ -287,34 +329,84 @@ public class QueryExecutor {
             var result = new LinkedHashMap<>(optRepo.get());
             int repoId = ((Number) result.get("id")).intValue();
 
-            // Count files
-            long fileCount = handle.createQuery("SELECT COUNT(*) FROM files WHERE repo_id = :repoId")
-                    .bind("repoId", repoId)
-                    .mapTo(Long.class)
-                    .one();
-            result.put("fileCount", fileCount);
+            if ("main".equals(effectiveBranch)) {
+                // Count files — main branch only
+                long fileCount = handle.createQuery(
+                        "SELECT COUNT(*) FROM files WHERE repo_id = :repoId AND branch = 'main'")
+                        .bind("repoId", repoId)
+                        .mapTo(Long.class)
+                        .one();
+                result.put("fileCount", fileCount);
 
-            // Language breakdown
-            var languageBreakdown = handle.createQuery("""
-                    SELECT language, COUNT(*) AS count
-                    FROM files WHERE repo_id = :repoId AND language IS NOT NULL
-                    GROUP BY language ORDER BY count DESC
-                    """)
-                    .bind("repoId", repoId)
-                    .mapToMap()
-                    .list();
-            result.put("languageBreakdown", languageBreakdown);
+                // Language breakdown — main branch only
+                var languageBreakdown = handle.createQuery("""
+                        SELECT language, COUNT(*) AS count
+                        FROM files WHERE repo_id = :repoId AND branch = 'main' AND language IS NOT NULL
+                        GROUP BY language ORDER BY count DESC
+                        """)
+                        .bind("repoId", repoId)
+                        .mapToMap()
+                        .list();
+                result.put("languageBreakdown", languageBreakdown);
 
-            // Top-level directories (first path segment)
-            var topLevelDirs = handle.createQuery("""
-                    SELECT DISTINCT split_part(path, '/', 1) AS dir
-                    FROM files WHERE repo_id = :repoId AND path LIKE '%/%'
-                    ORDER BY dir
-                    """)
-                    .bind("repoId", repoId)
-                    .mapTo(String.class)
-                    .list();
-            result.put("topLevelDirectories", topLevelDirs);
+                // Top-level directories — main branch only
+                var topLevelDirs = handle.createQuery("""
+                        SELECT DISTINCT split_part(path, '/', 1) AS dir
+                        FROM files WHERE repo_id = :repoId AND branch = 'main' AND path LIKE '%/%'
+                        ORDER BY dir
+                        """)
+                        .bind("repoId", repoId)
+                        .mapTo(String.class)
+                        .list();
+                result.put("topLevelDirectories", topLevelDirs);
+            } else {
+                // Count effective files for branch (DISTINCT ON overlay)
+                long fileCount = handle.createQuery("""
+                        SELECT COUNT(*) FROM (
+                            SELECT DISTINCT ON (path) path
+                            FROM files
+                            WHERE repo_id = :repoId AND branch IN (:branch, 'main')
+                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
+                        ) effective
+                        """)
+                        .bind("repoId", repoId)
+                        .bind("branch", effectiveBranch)
+                        .mapTo(Long.class)
+                        .one();
+                result.put("fileCount", fileCount);
+
+                // Language breakdown for effective files
+                var languageBreakdown = handle.createQuery("""
+                        SELECT language, COUNT(*) AS count FROM (
+                            SELECT DISTINCT ON (path) path, language
+                            FROM files
+                            WHERE repo_id = :repoId AND branch IN (:branch, 'main') AND language IS NOT NULL
+                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
+                        ) effective
+                        GROUP BY language ORDER BY count DESC
+                        """)
+                        .bind("repoId", repoId)
+                        .bind("branch", effectiveBranch)
+                        .mapToMap()
+                        .list();
+                result.put("languageBreakdown", languageBreakdown);
+
+                // Top-level directories for effective files
+                var topLevelDirs = handle.createQuery("""
+                        SELECT DISTINCT split_part(path, '/', 1) AS dir FROM (
+                            SELECT DISTINCT ON (path) path
+                            FROM files
+                            WHERE repo_id = :repoId AND branch IN (:branch, 'main') AND path LIKE '%/%'
+                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
+                        ) effective
+                        ORDER BY dir
+                        """)
+                        .bind("repoId", repoId)
+                        .bind("branch", effectiveBranch)
+                        .mapTo(String.class)
+                        .list();
+                result.put("topLevelDirectories", topLevelDirs);
+            }
 
             return (Map<String, Object>) result;
         });
@@ -323,19 +415,30 @@ public class QueryExecutor {
     /**
      * Get a summary of a specific file including its symbols and imports.
      */
-    public Map<String, Object> getFileSummary(String repoName, String filePath) {
+    public Map<String, Object> getFileSummary(String repoName, String filePath, String branch) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
-            var optFile = handle.createQuery("""
-                    SELECT f.id, f.path, f.language, f.size_bytes, f.last_commit_sha, f.last_modified_at,
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT ef.id, ef.path, ef.language, ef.size_bytes, ef.last_commit_sha, ef.last_modified_at,
                            r.name AS repo_name
-                    FROM files f
-                    JOIN repositories r ON f.repo_id = r.id
-                    WHERE r.name = :repoName AND f.path = :filePath
-                    """)
-                    .bind("repoName", repoName)
-                    .bind("filePath", filePath)
-                    .mapToMap()
-                    .findOne();
+                    FROM effective_files ef
+                    JOIN repositories r ON ef.repo_id = r.id
+                    WHERE r.name = :repoName AND ef.path = :filePath
+                    """);
+
+            var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
+            params.put("repoName", repoName);
+            params.put("filePath", filePath);
+
+            var q = handle.createQuery(sb.toString());
+            params.forEach(q::bind);
+            var optFile = q.mapToMap().findOne();
 
             if (optFile.isEmpty()) {
                 return Collections.<String, Object>emptyMap();
@@ -373,22 +476,33 @@ public class QueryExecutor {
     /**
      * Get a flat directory tree for a repository path prefix.
      */
-    public List<Map<String, Object>> getDirectoryTree(String repoName, String path, int depth) {
+    public List<Map<String, Object>> getDirectoryTree(String repoName, String path, int depth, String branch) {
+        String effectiveBranch = resolveBranch(branch);
         return jdbi.withHandle(handle -> {
             String prefix = (path != null && !path.isBlank()) ? path : "";
             String pattern = prefix.isEmpty() ? "%" : (prefix.endsWith("/") ? prefix + "%" : prefix + "/%");
 
-            return handle.createQuery("""
-                    SELECT f.path, f.language
-                    FROM files f
-                    JOIN repositories r ON f.repo_id = r.id
-                    WHERE r.name = :repoName AND f.path LIKE :pattern
-                    ORDER BY f.path
-                    """)
-                    .bind("repoName", repoName)
-                    .bind("pattern", pattern)
-                    .mapToMap()
-                    .list();
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            sb.append("""
+                    SELECT ef.path, ef.language
+                    FROM effective_files ef
+                    JOIN repositories r ON ef.repo_id = r.id
+                    WHERE r.name = :repoName AND ef.path LIKE :pattern
+                    ORDER BY ef.path
+                    """);
+
+            var params = new LinkedHashMap<String, Object>();
+
+            if (!"main".equals(effectiveBranch)) {
+                params.put("branch", effectiveBranch);
+            }
+
+            params.put("repoName", repoName);
+            params.put("pattern", pattern);
+
+            var q = handle.createQuery(sb.toString());
+            params.forEach(q::bind);
+            return q.mapToMap().list();
         });
     }
 
@@ -443,6 +557,43 @@ public class QueryExecutor {
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Build a CTE that returns the effective files for a repo+branch combination.
+     * Branch-specific files take priority over main files for the same path.
+     * When branch is null or "main", this returns only main files.
+     */
+    private String effectiveFilesCte(String branch) {
+        String effectiveBranch = (branch == null || branch.isBlank()) ? "main" : branch;
+        if ("main".equals(effectiveBranch)) {
+            return """
+                    WITH effective_files AS (
+                        SELECT f.id, f.repo_id, f.path, f.language, f.size_bytes,
+                               f.last_commit_sha, f.last_modified_at, f.branch
+                        FROM files f
+                        WHERE f.branch = 'main'
+                    )
+                    """;
+        }
+        return """
+                WITH effective_files AS (
+                    SELECT DISTINCT ON (f.repo_id, f.path)
+                           f.id, f.repo_id, f.path, f.language, f.size_bytes,
+                           f.last_commit_sha, f.last_modified_at, f.branch
+                    FROM files f
+                    WHERE f.branch IN (:branch, 'main')
+                    ORDER BY f.repo_id, f.path,
+                             CASE WHEN f.branch = :branch THEN 0 ELSE 1 END
+                )
+                """;
+    }
+
+    /**
+     * Resolve branch to a non-null value. Null or blank defaults to "main".
+     */
+    private String resolveBranch(String branch) {
+        return (branch == null || branch.isBlank()) ? "main" : branch;
+    }
 
     private String readSourceLines(String clonePath, String filePath, int startLine, int endLine) {
         if (clonePath == null || clonePath.isBlank()) {

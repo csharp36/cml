@@ -42,7 +42,7 @@ class SearchSymbolsToolTest {
 
     @Test
     void searchesByName() {
-        var results = queryExecutor.searchSymbols("App", null, null, null, 20);
+        var results = queryExecutor.searchSymbols("App", null, null, null, null, 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("name")).isEqualTo("App");
         assertThat(results.get(0).get("kind")).isEqualTo("class");
@@ -50,20 +50,20 @@ class SearchSymbolsToolTest {
 
     @Test
     void searchesByKind() {
-        var results = queryExecutor.searchSymbols(null, "method", null, null, 20);
+        var results = queryExecutor.searchSymbols(null, "method", null, null, null, 20);
         assertThat(results).hasSize(2);
     }
 
     @Test
     void searchesByNamePattern() {
-        var results = queryExecutor.searchSymbols("run", null, null, null, 20);
+        var results = queryExecutor.searchSymbols("run", null, null, null, null, 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("signature")).isEqualTo("public void run()");
     }
 
     @Test
     void respectsLimit() {
-        var results = queryExecutor.searchSymbols(null, null, null, null, 1);
+        var results = queryExecutor.searchSymbols(null, null, null, null, null, 1);
         assertThat(results).hasSize(1);
     }
 }

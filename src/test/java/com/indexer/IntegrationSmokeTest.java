@@ -101,19 +101,19 @@ class IntegrationSmokeTest {
         pipeline.fullIndex(repoId, repoDir);
 
         // Verify: search_symbols finds ServiceImpl
-        var symbols = queryExecutor.searchSymbols("ServiceImpl", null, null, null, 20);
+        var symbols = queryExecutor.searchSymbols("ServiceImpl", null, null, null, null, 20);
         assertThat(symbols).anyMatch(s -> "ServiceImpl".equals(s.get("name")));
 
         // Verify: find_implementations finds ServiceImpl as implementing Service
-        var impls = queryExecutor.findImplementations("Service", null);
+        var impls = queryExecutor.findImplementations("Service", null, null);
         assertThat(impls).anyMatch(s -> "ServiceImpl".equals(s.get("class_name")));
 
         // Verify: search_code finds text content
-        var codeResults = queryExecutor.searchCode("getData", null, null, 10);
+        var codeResults = queryExecutor.searchCode("getData", null, null, null, 10);
         assertThat(codeResults).isNotEmpty();
 
         // Verify: get_repo_summary returns correct file count (2 Java files)
-        var summary = queryExecutor.getRepoSummary("smoke-repo");
+        var summary = queryExecutor.getRepoSummary("smoke-repo", null);
         assertThat(((Number) summary.get("fileCount")).intValue()).isEqualTo(2);
 
         // Verify: get_index_health returns zero pending events

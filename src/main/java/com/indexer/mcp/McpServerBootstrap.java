@@ -76,6 +76,7 @@ public class McpServerBootstrap {
                         "kind",     Map.of("type", "string", "description", "Symbol kind (class, method, function, ...)"),
                         "language", Map.of("type", "string", "description", "Programming language filter"),
                         "repo",     Map.of("type", "string", "description", "Repository name filter"),
+                        "branch",   Map.of("type", "string", "description", "Branch name (defaults to main)"),
                         "limit",    Map.of("type", "integer", "description", "Max results to return", "default", 20)
                 ),
                 List.of(),
@@ -91,7 +92,8 @@ public class McpServerBootstrap {
                         "repo",        Map.of("type", "string", "description", "Repository name"),
                         "file_path",   Map.of("type", "string", "description", "Path to the file within the repo"),
                         "symbol_name", Map.of("type", "string", "description", "Name of the symbol"),
-                        "line",        Map.of("type", "integer", "description", "Optional start line to disambiguate overloads")
+                        "line",        Map.of("type", "integer", "description", "Optional start line to disambiguate overloads"),
+                        "branch",      Map.of("type", "string", "description", "Branch name (defaults to main)")
                 ),
                 List.of("repo", "file_path", "symbol_name"),
                 false, null, null);
@@ -104,7 +106,8 @@ public class McpServerBootstrap {
         var schema = new McpSchema.JsonSchema("object",
                 Map.of(
                         "type_name", Map.of("type", "string", "description", "Name of the interface or base class"),
-                        "repo",      Map.of("type", "string", "description", "Optional repository name filter")
+                        "repo",      Map.of("type", "string", "description", "Optional repository name filter"),
+                        "branch",    Map.of("type", "string", "description", "Branch name (defaults to main)")
                 ),
                 List.of("type_name"),
                 false, null, null);
@@ -118,6 +121,7 @@ public class McpServerBootstrap {
                 Map.of(
                         "symbol_name", Map.of("type", "string", "description", "Symbol name to search for in imports"),
                         "repo",        Map.of("type", "string", "description", "Optional repository name filter"),
+                        "branch",      Map.of("type", "string", "description", "Branch name (defaults to main)"),
                         "limit",       Map.of("type", "integer", "description", "Max results", "default", 20)
                 ),
                 List.of("symbol_name"),
@@ -133,6 +137,7 @@ public class McpServerBootstrap {
                         "query",    Map.of("type", "string", "description", "Full-text search query"),
                         "language", Map.of("type", "string", "description", "Optional language filter"),
                         "repo",     Map.of("type", "string", "description", "Optional repository filter"),
+                        "branch",   Map.of("type", "string", "description", "Branch name (defaults to main)"),
                         "limit",    Map.of("type", "integer", "description", "Max results", "default", 20)
                 ),
                 List.of("query"),
@@ -148,6 +153,7 @@ public class McpServerBootstrap {
                         "pattern",  Map.of("type", "string", "description", "Glob-style path pattern (use * as wildcard)"),
                         "language", Map.of("type", "string", "description", "Optional language filter"),
                         "repo",     Map.of("type", "string", "description", "Optional repository filter"),
+                        "branch",   Map.of("type", "string", "description", "Branch name (defaults to main)"),
                         "limit",    Map.of("type", "integer", "description", "Max results", "default", 50)
                 ),
                 List.of("pattern"),
@@ -160,7 +166,8 @@ public class McpServerBootstrap {
     private McpSchema.Tool getRepoSummaryTool() {
         var schema = new McpSchema.JsonSchema("object",
                 Map.of(
-                        "repo_name", Map.of("type", "string", "description", "Repository name")
+                        "repo_name", Map.of("type", "string", "description", "Repository name"),
+                        "branch",    Map.of("type", "string", "description", "Branch name (defaults to main)")
                 ),
                 List.of("repo_name"),
                 false, null, null);
@@ -173,7 +180,8 @@ public class McpServerBootstrap {
         var schema = new McpSchema.JsonSchema("object",
                 Map.of(
                         "repo_name", Map.of("type", "string", "description", "Repository name"),
-                        "file_path", Map.of("type", "string", "description", "Path to the file within the repo")
+                        "file_path", Map.of("type", "string", "description", "Path to the file within the repo"),
+                        "branch",    Map.of("type", "string", "description", "Branch name (defaults to main)")
                 ),
                 List.of("repo_name", "file_path"),
                 false, null, null);
@@ -187,7 +195,8 @@ public class McpServerBootstrap {
                 Map.of(
                         "repo_name", Map.of("type", "string", "description", "Repository name"),
                         "path",      Map.of("type", "string", "description", "Directory path prefix (empty for root)"),
-                        "depth",     Map.of("type", "integer", "description", "Tree depth (informational, filtering done client-side)", "default", 3)
+                        "depth",     Map.of("type", "integer", "description", "Tree depth (informational, filtering done client-side)", "default", 3),
+                        "branch",    Map.of("type", "string", "description", "Branch name (defaults to main)")
                 ),
                 List.of("repo_name"),
                 false, null, null);
@@ -218,9 +227,10 @@ public class McpServerBootstrap {
             String kind     = stringArg(args, "kind");
             String language = stringArg(args, "language");
             String repo     = stringArg(args, "repo");
+            String branch   = stringArg(args, "branch");
             int limit       = intArg(args, "limit", 20);
 
-            var results = queryExecutor.searchSymbols(query, kind, language, repo, limit);
+            var results = queryExecutor.searchSymbols(query, kind, language, repo, branch, limit);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
@@ -235,8 +245,9 @@ public class McpServerBootstrap {
             String filePath   = stringArg(args, "file_path");
             String symbolName = stringArg(args, "symbol_name");
             Integer line      = args.containsKey("line") ? intArg(args, "line", 0) : null;
+            String branch     = stringArg(args, "branch");
 
-            var result = queryExecutor.getSymbolDetail(repo, filePath, symbolName, line);
+            var result = queryExecutor.getSymbolDetail(repo, filePath, symbolName, line, branch);
             return jsonResult(result);
         } catch (Exception e) {
             return errorResult(e);
@@ -249,8 +260,9 @@ public class McpServerBootstrap {
         try {
             String typeName = stringArg(args, "type_name");
             String repo     = stringArg(args, "repo");
+            String branch   = stringArg(args, "branch");
 
-            var results = queryExecutor.findImplementations(typeName, repo);
+            var results = queryExecutor.findImplementations(typeName, repo, branch);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
@@ -263,9 +275,10 @@ public class McpServerBootstrap {
         try {
             String symbolName = stringArg(args, "symbol_name");
             String repo       = stringArg(args, "repo");
+            String branch     = stringArg(args, "branch");
             int limit         = intArg(args, "limit", 20);
 
-            var results = queryExecutor.findReferences(symbolName, repo, limit);
+            var results = queryExecutor.findReferences(symbolName, repo, branch, limit);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
@@ -279,9 +292,10 @@ public class McpServerBootstrap {
             String query    = stringArg(args, "query");
             String language = stringArg(args, "language");
             String repo     = stringArg(args, "repo");
+            String branch   = stringArg(args, "branch");
             int limit       = intArg(args, "limit", 20);
 
-            var results = queryExecutor.searchCode(query, language, repo, limit);
+            var results = queryExecutor.searchCode(query, language, repo, branch, limit);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
@@ -295,9 +309,10 @@ public class McpServerBootstrap {
             String pattern  = stringArg(args, "pattern");
             String language = stringArg(args, "language");
             String repo     = stringArg(args, "repo");
+            String branch   = stringArg(args, "branch");
             int limit       = intArg(args, "limit", 50);
 
-            var results = queryExecutor.searchFiles(pattern, language, repo, limit);
+            var results = queryExecutor.searchFiles(pattern, language, repo, branch, limit);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
@@ -309,7 +324,8 @@ public class McpServerBootstrap {
             Map<String, Object> args) {
         try {
             String repoName = stringArg(args, "repo_name");
-            var result = queryExecutor.getRepoSummary(repoName);
+            String branch   = stringArg(args, "branch");
+            var result = queryExecutor.getRepoSummary(repoName, branch);
             return jsonResult(result);
         } catch (Exception e) {
             return errorResult(e);
@@ -322,7 +338,8 @@ public class McpServerBootstrap {
         try {
             String repoName = stringArg(args, "repo_name");
             String filePath = stringArg(args, "file_path");
-            var result = queryExecutor.getFileSummary(repoName, filePath);
+            String branch   = stringArg(args, "branch");
+            var result = queryExecutor.getFileSummary(repoName, filePath, branch);
             return jsonResult(result);
         } catch (Exception e) {
             return errorResult(e);
@@ -336,8 +353,9 @@ public class McpServerBootstrap {
             String repoName = stringArg(args, "repo_name");
             String path     = stringArg(args, "path");
             int depth       = intArg(args, "depth", 3);
+            String branch   = stringArg(args, "branch");
 
-            var results = queryExecutor.getDirectoryTree(repoName, path, depth);
+            var results = queryExecutor.getDirectoryTree(repoName, path, depth, branch);
             return jsonResult(results);
         } catch (Exception e) {
             return errorResult(e);
