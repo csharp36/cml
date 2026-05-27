@@ -68,6 +68,15 @@ public class FileDao {
         );
     }
 
+    public void deleteByRepoAndBranch(int repoId, String branch) {
+        jdbi.useHandle(handle ->
+                handle.createUpdate("DELETE FROM files WHERE repo_id = :repoId AND branch = :branch")
+                        .bind("repoId", repoId)
+                        .bind("branch", branch)
+                        .execute()
+        );
+    }
+
     public int countByRepo(int repoId) {
         return jdbi.withHandle(handle ->
                 handle.createQuery("SELECT COUNT(*) FROM files WHERE repo_id = :repoId")

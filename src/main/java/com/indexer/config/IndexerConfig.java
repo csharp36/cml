@@ -11,7 +11,8 @@ public record IndexerConfig(
         DatabaseConfig database,
         List<RepositoryConfig> repositories,
         LanguagesConfig languages,
-        AdminConfig admin
+        AdminConfig admin,
+        BranchConfig branches
 ) {
     public record ServerConfig(
             String cloneBaseDir,
@@ -67,11 +68,19 @@ public record IndexerConfig(
         // token can be null — admin API is disabled
     }
 
+    public record BranchConfig(boolean autoIndex, int ttlDays, int cleanupIntervalHours) {
+        public BranchConfig {
+            if (ttlDays <= 0) ttlDays = 14;
+            if (cleanupIntervalHours <= 0) cleanupIntervalHours = 24;
+        }
+    }
+
     public IndexerConfig {
         if (server == null) throw new ConfigValidationException("server section is required");
         if (database == null) throw new ConfigValidationException("database section is required");
         if (repositories == null) repositories = List.of();
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
+        if (branches == null) branches = new BranchConfig(true, 14, 24);
     }
 }

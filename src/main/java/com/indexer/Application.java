@@ -7,6 +7,7 @@ import com.indexer.config.ConfigLoader;
 import com.indexer.config.IndexerConfig;
 import com.indexer.config.LanguageRegistry;
 import com.indexer.db.*;
+import com.indexer.indexing.BranchCleanupTask;
 import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
@@ -26,6 +27,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Application {
     private static final Logger log = LoggerFactory.getLogger(Application.class);
@@ -35,6 +38,7 @@ public class Application {
     private McpServerBootstrap mcpServer;
     private EventQueuePoller poller;
     private ExecutorService executor;
+    private ScheduledExecutorService scheduler;
     private AdminService adminService;
     private TSParserPool parserPool;
 
@@ -148,6 +152,16 @@ public class Application {
             }, 1000);
             executor.submit(poller);
 
+            // 7b. Schedule branch cleanup task
+            scheduler = Executors.newSingleThreadScheduledExecutor();
+            var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao, config.branches().ttlDays());
+            scheduler.scheduleAtFixedRate(cleanupTask,
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().cleanupIntervalHours(),
+                    TimeUnit.HOURS);
+            log.info("Branch cleanup task scheduled every {}h (TTL={}d)",
+                    config.branches().cleanupIntervalHours(), config.branches().ttlDays());
+
             // 8. Start MCP servers (both transports)
             mcpServer = new McpServerBootstrap(jdbi);
             mcpServer.startStdio();
@@ -168,6 +182,7 @@ public class Application {
         log.info("Shutting down...");
         if (poller != null) poller.stop();
         if (executor != null) executor.shutdownNow();
+        if (scheduler != null) scheduler.shutdownNow();
         if (adminService != null) adminService.shutdown();
         if (mcpServer != null) mcpServer.stop();
         if (httpServer != null) httpServer.stop();

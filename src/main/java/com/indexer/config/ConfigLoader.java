@@ -85,8 +85,9 @@ public class ConfigLoader {
         List<IndexerConfig.RepositoryConfig> repositories = parseRepositories(root.get("repositories"));
         IndexerConfig.LanguagesConfig languages = parseLanguages(root.get("languages"));
         IndexerConfig.AdminConfig admin = parseAdmin(root.get("admin"));
+        IndexerConfig.BranchConfig branches = parseBranches(root.get("branches"));
 
-        return new IndexerConfig(server, database, repositories, languages, admin);
+        return new IndexerConfig(server, database, repositories, languages, admin, branches);
     }
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
@@ -160,6 +161,14 @@ public class ConfigLoader {
         if (node == null) return null;
         String token = textOrNull(node, "token");
         return new IndexerConfig.AdminConfig(token);
+    }
+
+    private IndexerConfig.BranchConfig parseBranches(JsonNode node) {
+        if (node == null) return null;
+        boolean autoIndex = !node.has("autoIndex") || node.get("autoIndex").asBoolean(true);
+        int ttlDays = node.has("ttlDays") ? node.get("ttlDays").asInt(14) : 14;
+        int cleanupIntervalHours = node.has("cleanupIntervalHours") ? node.get("cleanupIntervalHours").asInt(24) : 24;
+        return new IndexerConfig.BranchConfig(autoIndex, ttlDays, cleanupIntervalHours);
     }
 
     private String textOrNull(JsonNode node, String field) {
