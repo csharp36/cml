@@ -1,5 +1,6 @@
 package com.indexer.indexing;
 
+import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.repository.GitOperations;
 import org.slf4j.Logger;
@@ -17,11 +18,17 @@ public class IndexingPipeline {
     private final RepositoryDao repositoryDao;
     private final FileIndexer fileIndexer;
     private final GitOperations gitOps;
+    private final BranchIndexDao branchIndexDao;
 
     public IndexingPipeline(RepositoryDao repositoryDao, FileIndexer fileIndexer, GitOperations gitOps) {
+        this(repositoryDao, fileIndexer, gitOps, null);
+    }
+
+    public IndexingPipeline(RepositoryDao repositoryDao, FileIndexer fileIndexer, GitOperations gitOps, BranchIndexDao branchIndexDao) {
         this.repositoryDao = repositoryDao;
         this.fileIndexer = fileIndexer;
         this.gitOps = gitOps;
+        this.branchIndexDao = branchIndexDao;
     }
 
     public void fullIndex(int repoId, Path repoDir) throws IOException {
@@ -74,5 +81,35 @@ public class IndexingPipeline {
 
         repositoryDao.updateLastIndexed(repoId, toSha, Instant.now());
         log.info("Incremental index complete for repo {}", repoId);
+    }
+
+    /**
+     * Index a feature branch by computing its delta from main.
+     * Only changed files are indexed; unchanged files fall through to main via overlay queries.
+     */
+    public void branchIndex(int repoId, String branch, Path repoDir, String branchSha) throws IOException {
+        log.info("Branch indexing repo {} branch {} at SHA {}", repoId, branch, branchSha);
+
+        String mainSha = gitOps.getCurrentSha(repoDir);
+
+        List<String> changedFiles = gitOps.diffFromMain(repoDir, branchSha);
+        log.info("Branch {} has {} files changed from main", branch, changedFiles.size());
+
+        for (String relativePath : changedFiles) {
+            try {
+                String content = gitOps.showFile(repoDir, branchSha, relativePath);
+                fileIndexer.indexFileFromContent(repoId, branch, relativePath, content, branchSha);
+            } catch (IOException e) {
+                log.debug("Could not read {} from branch {} (may be deleted): {}", relativePath, branch, e.getMessage());
+            } catch (Exception e) {
+                log.error("Failed to index branch file {} in repo {}: {}", relativePath, repoId, e.getMessage(), e);
+            }
+        }
+
+        if (branchIndexDao != null) {
+            branchIndexDao.upsert(repoId, branch, mainSha, branchSha);
+        }
+
+        log.info("Branch index complete for repo {} branch {}", repoId, branch);
     }
 }

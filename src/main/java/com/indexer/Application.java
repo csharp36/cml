@@ -22,6 +22,7 @@ import com.indexer.server.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -73,7 +74,8 @@ public class Application {
             var symbolExtractor = new SymbolExtractor(treeSitterEngine);
             var fileIndexer = new FileIndexer(fileDao, symbolDao, jdbi, languageRegistry,
                     symbolExtractor, config.server().maxFileSizeBytes());
-            var indexingPipeline = new IndexingPipeline(repositoryDao, fileIndexer, gitOps);
+            var branchIndexDao = new BranchIndexDao(jdbi);
+            var indexingPipeline = new IndexingPipeline(repositoryDao, fileIndexer, gitOps, branchIndexDao);
             var repoManager = new RepositoryManager(config, authRegistry, repositoryDao, gitOps);
 
             // 4. Clone/fetch repos and run initial index
@@ -124,8 +126,22 @@ public class Application {
                     throw new RuntimeException("Unknown repo: " + event.repoName());
                 }
                 try {
-                    indexingPipeline.incrementalIndex(repo.id(), repo.branch(), Path.of(repo.clonePath()),
-                            event.previousSha(), event.currentSha());
+                    String branch = event.branch() != null ? event.branch() : "main";
+                    if ("main".equals(branch) || branch.equals(repo.branch())) {
+                        // Main branch: fetch, fast-forward, incremental index
+                        gitOps.fetch(Path.of(repo.clonePath()), null);
+                        try {
+                            gitOps.fastForward(Path.of(repo.clonePath()), repo.branch());
+                        } catch (IOException e) {
+                            log.warn("Fast-forward failed for {}, continuing with incremental: {}", repo.name(), e.getMessage());
+                        }
+                        indexingPipeline.incrementalIndex(repo.id(), branch, Path.of(repo.clonePath()),
+                                event.previousSha(), event.currentSha());
+                    } else {
+                        // Feature branch: fetch, then delta-index from main
+                        gitOps.fetch(Path.of(repo.clonePath()), null);
+                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()), event.currentSha());
+                    }
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);
                 }

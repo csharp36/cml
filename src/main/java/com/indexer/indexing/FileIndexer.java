@@ -101,6 +101,34 @@ public class FileIndexer {
         fileDao.deleteByRepoAndPath(repoId, relativePath);
     }
 
+    /**
+     * Index a file from provided content string (e.g., from git show).
+     * Used for branch indexing where the working tree is on a different branch.
+     */
+    public void indexFileFromContent(int repoId, String branch, String relativePath, String content, String commitSha) {
+        String language = languageRegistry.detectLanguage(relativePath);
+        if (language == null) {
+            return;
+        }
+
+        if (content.length() > maxFileSizeBytes) {
+            log.debug("Skipping oversized file: {} ({} bytes)", relativePath, content.length());
+            return;
+        }
+
+        SourceFile sourceFile = new SourceFile(0, repoId, branch, relativePath, language, content.length(), commitSha, Instant.now());
+        int fileId = fileDao.upsert(sourceFile);
+
+        symbolDao.deleteSymbolsByFileId(fileId);
+        symbolDao.deleteImportsByFileId(fileId);
+
+        indexContent(fileId, content);
+
+        if (languageRegistry.isCoreLanguage(language)) {
+            indexSymbols(fileId, content, language);
+        }
+    }
+
     private void indexMetadataOnly(int repoId, String branch, String relativePath, Path filePath, String commitSha) {
         long fileSize = 0;
         try {
