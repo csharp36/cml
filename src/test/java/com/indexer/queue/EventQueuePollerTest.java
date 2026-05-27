@@ -32,7 +32,7 @@ class EventQueuePollerTest {
 
     @Test
     void claimsAndProcessesPendingEvent() throws Exception {
-        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha1", "sha2");
+        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha1", "sha2", "main");
         var processed = new ArrayList<EventQueuePoller.ProcessableEvent>();
         var latch = new CountDownLatch(1);
         var poller = new EventQueuePoller(eventDao, event -> { processed.add(event); latch.countDown(); }, 100);
@@ -50,9 +50,9 @@ class EventQueuePollerTest {
 
     @Test
     void deduplicatesMultipleEventsForSameRepo() throws Exception {
-        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha1", "sha2");
-        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha2", "sha3");
-        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha3", "sha4");
+        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha1", "sha2", "main");
+        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha2", "sha3", "main");
+        eventDao.insert("repo-a", "/repos/repo-a", "post-commit", "sha3", "sha4", "main");
         var processed = new ArrayList<EventQueuePoller.ProcessableEvent>();
         var latch = new CountDownLatch(1);
         var poller = new EventQueuePoller(eventDao, event -> { processed.add(event); latch.countDown(); }, 100);

@@ -15,17 +15,18 @@ public class EventDao {
         this.jdbi = jdbi;
     }
 
-    public long insert(String repoName, String repoPath, String eventType, String previousSha, String currentSha) {
+    public long insert(String repoName, String repoPath, String eventType, String previousSha, String currentSha, String branch) {
         return jdbi.withHandle(handle ->
                 handle.createUpdate("""
-                        INSERT INTO indexing_events (repo_name, repo_path, event_type, previous_sha, current_sha)
-                        VALUES (:repoName, :repoPath, :eventType, :previousSha, :currentSha)
+                        INSERT INTO indexing_events (repo_name, repo_path, event_type, previous_sha, current_sha, branch)
+                        VALUES (:repoName, :repoPath, :eventType, :previousSha, :currentSha, :branch)
                         """)
                         .bind("repoName", repoName)
                         .bind("repoPath", repoPath)
                         .bind("eventType", eventType)
                         .bind("previousSha", previousSha)
                         .bind("currentSha", currentSha)
+                        .bind("branch", branch != null ? branch : "main")
                         .executeAndReturnGeneratedKeys("id")
                         .mapTo(Long.class)
                         .one()
@@ -54,6 +55,7 @@ public class EventDao {
                                 rs.getString("event_type"),
                                 rs.getString("previous_sha"),
                                 rs.getString("current_sha"),
+                                rs.getString("branch"),
                                 rs.getString("status"),
                                 rs.getString("error_message"),
                                 rs.getTimestamp("created_at") != null
@@ -111,6 +113,7 @@ public class EventDao {
                                 rs.getString("event_type"),
                                 rs.getString("previous_sha"),
                                 rs.getString("current_sha"),
+                                rs.getString("branch"),
                                 rs.getString("status"),
                                 rs.getString("error_message"),
                                 rs.getTimestamp("created_at") != null
@@ -153,6 +156,7 @@ public class EventDao {
                                 rs.getString("event_type"),
                                 rs.getString("previous_sha"),
                                 rs.getString("current_sha"),
+                                rs.getString("branch"),
                                 rs.getString("status"),
                                 rs.getString("error_message"),
                                 rs.getTimestamp("created_at") != null
@@ -181,6 +185,7 @@ public class EventDao {
                                 rs.getString("event_type"),
                                 rs.getString("previous_sha"),
                                 rs.getString("current_sha"),
+                                rs.getString("branch"),
                                 rs.getString("status"),
                                 rs.getString("error_message"),
                                 rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,
@@ -234,6 +239,7 @@ public class EventDao {
                     rs.getString("event_type"),
                     rs.getString("previous_sha"),
                     rs.getString("current_sha"),
+                    rs.getString("branch"),
                     rs.getString("status"),
                     rs.getString("error_message"),
                     rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,

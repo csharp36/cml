@@ -34,6 +34,6 @@ class EventDeduplicatorTest {
     }
 
     private IndexingEvent event(long id, String repo, String prev, String curr) {
-        return new IndexingEvent(id, repo, "/repos/" + repo, "post-commit", prev, curr, "pending", null, Instant.now(), null, null, null);
+        return new IndexingEvent(id, repo, "/repos/" + repo, "post-commit", prev, curr, "main", "pending", null, Instant.now(), null, null, null);
     }
 }

@@ -61,7 +61,7 @@ public class HttpServer {
             return;
         }
         long eventId = eventDao.insert(payload.repoName(), payload.repoPath(), payload.eventType(),
-                payload.previousSha(), payload.currentSha());
+                payload.previousSha(), payload.currentSha(), payload.effectiveBranch());
         eventDao.notifyNewEvent();
         log.info("Received webhook event #{} for repo {} ({})", eventId, payload.repoName(), payload.eventType());
         ctx.status(202).json(Map.of("eventId", eventId));
