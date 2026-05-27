@@ -591,9 +591,121 @@ public class QueryExecutor {
         });
     }
 
+    /**
+     * Check whether a local repository HEAD SHA matches the indexed SHA.
+     * Supports branch-aware comparison.
+     */
+    public Map<String, Object> checkSync(String repoName, String localSha, String branch) {
+        String effectiveBranch = resolveBranch(branch);
+
+        return jdbi.withHandle(handle -> {
+            var optRepo = handle.createQuery(
+                            "SELECT id, name, last_indexed_sha, last_indexed_at FROM repositories WHERE name = :name")
+                    .bind("name", repoName)
+                    .mapToMap()
+                    .findOne();
+
+            if (optRepo.isEmpty()) {
+                return Map.<String, Object>of("error",
+                        "Repository '" + repoName + "' not found in index");
+            }
+
+            var repo = optRepo.get();
+            int repoId = ((Number) repo.get("id")).intValue();
+
+            String indexedSha;
+            Object indexedAt;
+
+            if ("main".equals(effectiveBranch)) {
+                indexedSha = (String) repo.get("last_indexed_sha");
+                indexedAt = repo.get("last_indexed_at");
+            } else {
+                // Look up branch_index for this branch
+                var optBranch = handle.createQuery(
+                                "SELECT indexed_sha, indexed_at FROM branch_index WHERE repo_id = :repoId AND branch = :branch")
+                        .bind("repoId", repoId)
+                        .bind("branch", effectiveBranch)
+                        .mapToMap()
+                        .findOne();
+
+                if (optBranch.isEmpty()) {
+                    // Branch not indexed — trigger fault-in if possible
+                    ensureBranchIndexed(repoName, effectiveBranch);
+
+                    // Re-check after fault-in
+                    optBranch = handle.createQuery(
+                                    "SELECT indexed_sha, indexed_at FROM branch_index WHERE repo_id = :repoId AND branch = :branch")
+                            .bind("repoId", repoId)
+                            .bind("branch", effectiveBranch)
+                            .mapToMap()
+                            .findOne();
+                }
+
+                if (optBranch.isEmpty()) {
+                    var result = new LinkedHashMap<String, Object>();
+                    result.put("repo_name", repoName);
+                    result.put("branch", effectiveBranch);
+                    result.put("status", "not_indexed");
+                    result.put("local_sha", localSha);
+                    result.put("indexed_sha", null);
+                    result.put("indexed_at", null);
+                    result.put("message", "Branch '" + effectiveBranch + "' could not be indexed. It may not exist on the remote.");
+                    return (Map<String, Object>) result;
+                }
+
+                indexedSha = (String) optBranch.get().get("indexed_sha");
+                indexedAt = optBranch.get().get("indexed_at");
+
+                // Touch last_accessed_at
+                if (branchIndexDao != null) {
+                    branchIndexDao.touchLastAccessed(repoId, effectiveBranch);
+                }
+            }
+
+            if (indexedSha == null) {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("repo_name", repoName);
+                result.put("branch", effectiveBranch);
+                result.put("status", "not_indexed");
+                result.put("local_sha", localSha);
+                result.put("indexed_sha", null);
+                result.put("indexed_at", null);
+                result.put("message", "Repository exists but has not been indexed yet.");
+                return (Map<String, Object>) result;
+            }
+
+            boolean inSync = shaMatches(localSha, indexedSha);
+
+            var result = new LinkedHashMap<String, Object>();
+            result.put("repo_name", repoName);
+            result.put("branch", effectiveBranch);
+            result.put("status", inSync ? "in_sync" : "out_of_sync");
+            result.put("local_sha", localSha);
+            result.put("indexed_sha", indexedSha);
+            result.put("indexed_at", indexedAt != null ? indexedAt.toString() : null);
+            result.put("message", inSync
+                    ? "Your local repo matches the index."
+                    : "Your local repo does not match the index.");
+            if (!inSync) {
+                result.put("action", "Run 'git pull' to sync, or push your changes to trigger re-indexing.");
+            }
+            return (Map<String, Object>) result;
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * Compare two git SHAs, handling abbreviated SHAs and case differences.
+     */
+    private boolean shaMatches(String sha1, String sha2) {
+        if (sha1 == null || sha2 == null) return false;
+        String lower1 = sha1.toLowerCase();
+        String lower2 = sha2.toLowerCase();
+        return lower1.startsWith(lower2) || lower2.startsWith(lower1);
+    }
 
     /**
      * Build a CTE that returns the effective files for a repo+branch combination.

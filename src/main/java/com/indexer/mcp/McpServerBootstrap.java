@@ -11,11 +11,12 @@ import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 10 MCP tools with the MCP Java SDK and starts the server over stdio or SSE.
+ * Registers all 11 MCP tools with the MCP Java SDK and starts the server over stdio or SSE.
  */
 public class McpServerBootstrap {
 
@@ -37,12 +38,12 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(new ObjectMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 10 tools registered");
+        log.info("MCP server started over stdio with 11 tools registered");
     }
 
     public void startSse(JavalinSseServerTransportProvider sseTransport) {
         sseServer = buildServer(sseTransport);
-        log.info("MCP server started over SSE with 10 tools registered");
+        log.info("MCP server started over SSE with 11 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -58,6 +59,7 @@ public class McpServerBootstrap {
                 .tool(getFileSummaryTool(), this::handleGetFileSummary)
                 .tool(getDirectoryTreeTool(), this::handleGetDirectoryTree)
                 .tool(getIndexHealthTool(), this::handleGetIndexHealth)
+                .tool(checkSyncTool(), this::handleCheckSync)
                 .build();
     }
 
@@ -220,6 +222,17 @@ public class McpServerBootstrap {
                 schema);
     }
 
+    private McpSchema.Tool checkSyncTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("repo_name",  Map.of("type", "string", "description", "Name of the repository to check"));
+        props.put("local_sha",  Map.of("type", "string", "description", "Your local HEAD SHA from 'git rev-parse HEAD'"));
+        props.put("branch",     Map.of("type", "string", "description", "Branch name (defaults to repo's configured branch, usually 'main')"));
+        var schema = new McpSchema.JsonSchema("object", props, List.of("repo_name", "local_sha"), false, null, null);
+        return new McpSchema.Tool("check_sync",
+                "Check whether a local repository is in sync with the indexed version. Pass the repo name and your local HEAD SHA (from 'git rev-parse HEAD'). Returns sync status and recommended action if out of sync.",
+                schema);
+    }
+
     // -----------------------------------------------------------------------
     // Tool handlers
     // -----------------------------------------------------------------------
@@ -372,6 +385,21 @@ public class McpServerBootstrap {
             Map<String, Object> args) {
         try {
             var result = queryExecutor.getIndexHealth();
+            return jsonResult(result);
+        } catch (Exception e) {
+            return errorResult(e);
+        }
+    }
+
+    private McpSchema.CallToolResult handleCheckSync(
+            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
+            Map<String, Object> args) {
+        try {
+            String repoName = stringArg(args, "repo_name");
+            String localSha = stringArg(args, "local_sha");
+            String branch   = stringArg(args, "branch");
+
+            var result = queryExecutor.checkSync(repoName, localSha, branch);
             return jsonResult(result);
         } catch (Exception e) {
             return errorResult(e);
