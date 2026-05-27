@@ -74,6 +74,51 @@ public class GitOperations {
         return files;
     }
 
+    /**
+     * Get the list of files changed between main and a branch SHA.
+     */
+    public List<String> diffFromMain(Path repoDir, String branchSha) throws IOException {
+        List<String> cmd = List.of("git", "diff", "--name-only", "main..." + branchSha);
+        String output = runCommandOutput(cmd, repoDir, null);
+        List<String> files = new ArrayList<>();
+        for (String line : output.split("\n")) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                files.add(trimmed);
+            }
+        }
+        return files;
+    }
+
+    /**
+     * Read file content from a specific git ref without checkout.
+     */
+    public String showFile(Path repoDir, String ref, String filePath) throws IOException {
+        List<String> cmd = List.of("git", "show", ref + ":" + filePath);
+        return runCommandOutput(cmd, repoDir, null);
+    }
+
+    /**
+     * Check if a remote branch exists.
+     */
+    public boolean remoteBranchExists(Path repoDir, String branch) throws IOException {
+        try {
+            List<String> cmd = List.of("git", "branch", "-r", "--list", "origin/" + branch);
+            String output = runCommandOutput(cmd, repoDir, null);
+            return !output.trim().isEmpty();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Get the SHA of a specific ref.
+     */
+    public String getShaForRef(Path repoDir, String ref) throws IOException {
+        List<String> cmd = List.of("git", "rev-parse", ref);
+        return runCommandOutput(cmd, repoDir, null).trim();
+    }
+
     // --- helpers ---
 
     private String buildUrl(String url, GitCredentials creds) {
