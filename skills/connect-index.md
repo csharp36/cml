@@ -1,6 +1,6 @@
 ---
 name: connect-index
-description: Connect your current project to the Source Code Indexer MCP server. Detects your repo, verifies it's indexed, and configures Claude Code to use the indexer.
+description: Connect your current project to the Source Code Indexer MCP server. Detects your repo, verifies it's indexed, checks sync status, and configures Claude Code to use the indexer.
 ---
 
 ## Steps
@@ -25,7 +25,21 @@ Use the `get_repo_summary` tool to check if the repo is in the index:
 - Call the tool with that repo name
 - If not found, inform the user and suggest they ask an admin to add it
 
-4. **Configure Claude Code**
+4. **Check sync status**
+
+Run `git rev-parse HEAD` to get the local HEAD SHA, and `git branch --show-current` to get the current branch name. Then call the `check_sync` tool:
+- Pass the repo name, local SHA, and branch name
+- If `status` is `in_sync`: continue silently (report in usage guide)
+- If `status` is `out_of_sync`: warn the developer:
+  ```
+  Warning: Your local repo is out of sync with the index.
+  Local SHA:   <local_sha>
+  Indexed SHA: <indexed_sha> (indexed at <indexed_at>)
+  Run 'git pull' to sync, or push your changes to trigger re-indexing.
+  ```
+- If `status` is `not_indexed`: inform the developer that indexing is still in progress
+
+5. **Configure Claude Code**
 
 Create `.claude/mcp_servers.json` in the project root:
 
@@ -38,12 +52,12 @@ Create `.claude/mcp_servers.json` in the project root:
 }
 ```
 
-5. **Print usage guide**
+6. **Print usage guide**
 
 Display:
 ```
 Connected to source-code-indexer. Your repo "<name>" is indexed
-(last updated: <time>, <file_count> files).
+(last updated: <time>, <file_count> files, branch: <branch>).
 
 Try these:
 - "What's the structure of this repo?"         → get_directory_tree
@@ -52,4 +66,7 @@ Try these:
 - "Show me the <ClassName> class"              → get_symbol_detail
 - "What imports <Module>?"                     → find_references
 - "Is the index healthy?"                      → get_index_health
+- "Is my local repo in sync with the index?"   → check_sync
 ```
+
+Note: When on a feature branch, include `branch: "<branch_name>"` in all subsequent tool calls so the index returns branch-aware results.

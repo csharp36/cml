@@ -297,6 +297,28 @@ Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get 
 | `get_file_summary` | File structure without content | Symbols, imports, index depth |
 | `get_directory_tree` | Directory tree | Nested structure with types |
 | `get_index_health` | System health check | Per-repo status, errors, queue state |
+| `check_sync` | Compare local HEAD SHA with indexed SHA | Sync status, recommended action |
+
+All tools except `get_index_health` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay.
+
+## Branch Support
+
+The indexer supports multiple branches per repository using a copy-on-write model:
+
+- **Main branch:** Fully indexed (all files, symbols, imports, contents)
+- **Feature branches:** Only files that differ from main are stored. Queries merge branch-specific files with main via an overlay.
+- **Automatic indexing:** Feature branches are indexed automatically when pushed via webhook
+- **TTL cleanup:** Branch data expires after configurable inactivity (default 14 days)
+- **Fault-in:** If branch data is expired or missing, the first query triggers a synchronous re-index (1-2 seconds)
+
+### Configuration
+
+```yaml
+branches:
+  autoIndex: true           # Index branches automatically on push
+  ttlDays: 14               # Days of inactivity before branch data is cleaned up
+  cleanupIntervalHours: 24  # How often the cleanup task runs
+```
 
 ## Admin API
 
