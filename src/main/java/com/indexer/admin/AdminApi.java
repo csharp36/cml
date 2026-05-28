@@ -44,6 +44,12 @@ public class AdminApi {
     }
 
     private void authenticate(Context ctx) {
+        // Static SPA assets must load without a header — a browser navigation can't send
+        // an Authorization header. The SPA authenticates its own API calls with the token.
+        if (ctx.path().startsWith("/admin/ui")) {
+            return;
+        }
+
         if (adminToken == null || adminToken.isBlank()) {
             ctx.status(503).json(Map.of("error", "Admin API disabled — no admin token configured"));
             ctx.skipRemainingHandlers();

@@ -54,9 +54,11 @@ public class HttpServer {
                     handler.addServlet(mcpHolder, "/mcp/*");
                 });
             }
+            // SPA fallback — serve index.html for unmatched /admin/ui/* routes.
+            // Static assets are still served by the staticFiles handler above; only
+            // unmatched (client-side) routes fall through to index.html.
+            config.spaRoot.addFile("/admin/ui", "admin-ui/dist/index.html", Location.EXTERNAL);
             config.routes.post("/webhook", this::handleWebhook);
-            // SPA fallback — serve index.html for all unmatched /admin/ui/* routes
-            config.routes.get("/admin/ui/*", ctx -> ctx.redirect("/admin/ui/"));
             // Apply additional route configurators (e.g., AdminApi)
             for (var configurator : routeConfigurators) {
                 configurator.accept(config.routes);
