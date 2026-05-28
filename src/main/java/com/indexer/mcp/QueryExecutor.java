@@ -1006,9 +1006,68 @@ public class QueryExecutor {
 
     private Map<String, Object> diffSymbols(org.jdbi.v3.core.Handle handle, int repoId,
                                              String branchA, String branchB, int limit) {
-        // Stub — replaced in Task 2
+        var rows = handle.createQuery("""
+                WITH effective_a AS (
+                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
+                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branchA, 'main')
+                    ORDER BY f.path, CASE WHEN f.branch = :branchA THEN 0 ELSE 1 END
+                ),
+                effective_b AS (
+                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
+                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branchB, 'main')
+                    ORDER BY f.path, CASE WHEN f.branch = :branchB THEN 0 ELSE 1 END
+                ),
+                syms_a AS (
+                    SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, ea.path AS file_path
+                    FROM symbols s JOIN effective_a ea ON s.file_id = ea.file_id
+                ),
+                syms_b AS (
+                    SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, eb.path AS file_path
+                    FROM symbols s JOIN effective_b eb ON s.file_id = eb.file_id
+                )
+                SELECT a.file_path AS a_file, a.name AS a_name, a.kind AS a_kind,
+                       a.signature AS a_sig, a.start_line AS a_start, a.end_line AS a_end,
+                       b.file_path AS b_file, b.name AS b_name, b.kind AS b_kind,
+                       b.signature AS b_sig, b.start_line AS b_start, b.end_line AS b_end
+                FROM syms_a a
+                FULL OUTER JOIN syms_b b ON a.file_path = b.file_path AND a.name = b.name AND a.kind = b.kind
+                WHERE a.name IS NULL OR b.name IS NULL
+                   OR a.signature IS DISTINCT FROM b.signature OR a.start_line != b.start_line OR a.end_line != b.end_line
+                LIMIT :limit
+                """)
+                .bind("repoId", repoId)
+                .bind("branchA", branchA)
+                .bind("branchB", branchB)
+                .bind("limit", limit)
+                .mapToMap()
+                .list();
+
+        var added = new java.util.ArrayList<Map<String, Object>>();
+        var removed = new java.util.ArrayList<Map<String, Object>>();
+        var modified = new java.util.ArrayList<Map<String, Object>>();
+
+        for (var row : rows) {
+            if (row.get("b_name") == null) {
+                added.add(Map.of(
+                        "name", row.get("a_name"), "kind", row.get("a_kind"),
+                        "file_path", row.get("a_file"), "signature", nullSafeObj(row.get("a_sig"))));
+            } else if (row.get("a_name") == null) {
+                removed.add(Map.of(
+                        "name", row.get("b_name"), "kind", row.get("b_kind"),
+                        "file_path", row.get("b_file"), "signature", nullSafeObj(row.get("b_sig"))));
+            } else {
+                var entry = new LinkedHashMap<String, Object>();
+                entry.put("name", row.get("a_name"));
+                entry.put("kind", row.get("a_kind"));
+                entry.put("file_path", row.get("a_file"));
+                entry.put("branch_a_signature", nullSafeObj(row.get("a_sig")));
+                entry.put("branch_b_signature", nullSafeObj(row.get("b_sig")));
+                modified.add(entry);
+            }
+        }
+
         return Map.of("detail", "symbols", "branch_a", branchA, "branch_b", branchB,
-                "added", List.of(), "removed", List.of(), "modified", List.of());
+                "added", added, "removed", removed, "modified", modified);
     }
 
     private static Object nullSafeObj(Object val) {
