@@ -6,14 +6,14 @@ A Java 21+ MCP server that maintains a PostgreSQL-backed index of source code re
 
 Designed for large financial institutions: pluggable enterprise auth, stateless cloud deployment, multi-instance scaling.
 
-**Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter structural parsing via tree-sitter-ng (Java, Python, TypeScript/JavaScript, Go, C), MCP protocol (stdio + SSE)
+**Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter structural parsing via tree-sitter-ng (Java, Python, TypeScript/JavaScript, Go, C), MCP protocol (stdio + Streamable HTTP)
 
 **Design spec:** `docs/superpowers/specs/2026-05-25-source-code-indexer-mcp-design.md`
 
 ## Architecture
 
 ```
-Claude Code <--MCP/stdio|SSE--> MCP Server
+Claude Code <--MCP/stdio|HTTP--> MCP Server
                                    |
                         +-----------+-----------+
                         |                       |
@@ -25,8 +25,8 @@ Claude Code <--MCP/stdio|SSE--> MCP Server
                    (pluggable)
 ```
 
-- **MCP Server:** Exposes 10 tools (9 query + 1 health). Both stdio and SSE transports always run simultaneously — stdio for local Claude Code subprocess, SSE for remote connections.
-- **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port as SSE (`/webhook`). Inserts events into PostgreSQL queue.
+- **MCP Server:** Exposes 11 tools (9 query + 1 health + 1 sync check). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
+- **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port (`/webhook`). Inserts events into PostgreSQL queue.
 - **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
 - **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
 - **AuthProvider:** Pluggable interface supporting SSH, tokens, OAuth2, mTLS, Kerberos, GCM, Vault, AWS/GCP secret managers.
@@ -102,7 +102,7 @@ export ADMIN_TOKEN=your-secret-token
 
 On first boot: clones all configured repos, runs Flyway migrations, performs full index, then starts the MCP server with both transports active simultaneously:
 - **stdio** — used when Claude Code spawns the server as a subprocess (local mode)
-- **SSE** — available at `http://localhost:8080/mcp` for remote connections
+- **Streamable HTTP** — available at `http://localhost:8080/mcp` for remote connections (MCP spec 2025-03-26)
 - **Webhook** — available at `http://localhost:8080/webhook` for git hook events
 
 All three are served from the single `httpPort` (default 8080).
@@ -123,11 +123,11 @@ All three are served from the single `httpPort` (default 8080).
 }
 ```
 
-**Remote (SSE):**
+**Remote (Streamable HTTP):**
 ```json
 {
   "source-code-indexer": {
-    "type": "sse",
+    "type": "http",
     "url": "http://your-server:8080/mcp"
   }
 }
