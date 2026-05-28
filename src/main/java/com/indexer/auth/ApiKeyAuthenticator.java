@@ -3,7 +3,10 @@ package com.indexer.auth;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.indexer.config.ConfigValidationException;
+
 import java.security.MessageDigest;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,8 +20,27 @@ public class ApiKeyAuthenticator {
 
     public ApiKeyAuthenticator(List<ApiKeyConfig> apiKeys) {
         this.apiKeys = apiKeys != null ? apiKeys : List.of();
+        validate();
         if (isEnabled()) {
             log.info("API key authentication enabled with {} configured key(s)", this.apiKeys.size());
+        }
+    }
+
+    private void validate() {
+        var seenIds = new HashSet<String>();
+        for (var keyConfig : apiKeys) {
+            if (keyConfig.key() == null || keyConfig.key().isBlank()) {
+                throw new ConfigValidationException("API key value must not be empty for id: " + keyConfig.id());
+            }
+            if (keyConfig.key().contains("${")) {
+                log.warn("API key for id '{}' appears to contain un-substituted variable reference", keyConfig.id());
+            }
+            if (keyConfig.id() == null || keyConfig.id().isBlank()) {
+                throw new ConfigValidationException("API key id must not be empty");
+            }
+            if (!seenIds.add(keyConfig.id())) {
+                throw new ConfigValidationException("Duplicate API key id: " + keyConfig.id());
+            }
         }
     }
 
