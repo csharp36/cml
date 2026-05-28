@@ -1,6 +1,7 @@
 plugins {
     java
     application
+    id("com.google.protobuf") version "0.9.4"
 }
 
 group = "com.indexer"
@@ -35,6 +36,9 @@ dependencies {
     implementation("org.jdbi:jdbi3-sqlobject:3.45.4")
     implementation("org.flywaydb:flyway-core:10.21.0")
     implementation("org.flywaydb:flyway-database-postgresql:10.21.0")
+
+    // SCIP protobuf
+    implementation("com.google.protobuf:protobuf-java:4.29.3")
 
     // Config
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2")
@@ -81,5 +85,11 @@ tasks.register<Test>("integrationTest") {
 tasks.register<Test>("e2eTest") {
     useJUnitPlatform {
         includeTags("e2e")
+    }
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.29.3"
     }
 }
