@@ -121,9 +121,14 @@ public class Application {
             var adminApi = new AdminApi(adminService, adminToken);
             httpServer.addRoutes(adminApi::registerRoutes);
 
+            // 7. Initialize MCP servers before starting HTTP (transport must be ready before accepting connections)
+            mcpServer = new McpServerBootstrap(queryExecutor);
+            mcpServer.startStdio();
+            mcpServer.startHttp(streamableTransport);
+
             httpServer.start(config.server().httpPort());
 
-            // 7. Start event queue poller
+            // 8. Start event queue poller
             executor = Executors.newFixedThreadPool(config.server().indexWorkers());
             poller = new EventQueuePoller(eventDao, event -> {
                 var repo = repositoryDao.findByName(event.repoName()).orElse(null);
@@ -156,7 +161,7 @@ public class Application {
             }, 1000);
             executor.submit(poller);
 
-            // 7b. Schedule branch cleanup task
+            // 8b. Schedule branch cleanup task
             scheduler = Executors.newSingleThreadScheduledExecutor();
             var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao, config.branches().ttlDays());
             scheduler.scheduleAtFixedRate(cleanupTask,
@@ -165,11 +170,6 @@ public class Application {
                     TimeUnit.HOURS);
             log.info("Branch cleanup task scheduled every {}h (TTL={}d)",
                     config.branches().cleanupIntervalHours(), config.branches().ttlDays());
-
-            // 8. Start MCP servers (both transports)
-            mcpServer = new McpServerBootstrap(queryExecutor);
-            mcpServer.startStdio();
-            mcpServer.startHttp(streamableTransport);
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

@@ -65,11 +65,6 @@ public class HttpServer {
         return app;
     }
 
-    public Javalin getApp() {
-        if (app == null) createApp();
-        return app;
-    }
-
     public void start(int port) {
         if (app == null) createApp();
         app.start(port);

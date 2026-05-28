@@ -23,6 +23,7 @@ import java.util.Map;
 public class McpServerBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(McpServerBootstrap.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final QueryExecutor queryExecutor;
     private McpSyncServer stdioServer;
@@ -471,7 +472,7 @@ public class McpServerBootstrap {
 
     private McpSchema.CallToolResult jsonResult(Object data) {
         try {
-            String json = new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(data);
+            String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data);
             return McpSchema.CallToolResult.builder()
                     .addTextContent(json)
                     .isError(false)
