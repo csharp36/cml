@@ -1,9 +1,12 @@
 package com.indexer.mcp;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indexer.auth.CallerIdentity;
 import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.repository.GitOperations;
+import io.modelcontextprotocol.spec.McpSchema;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -20,6 +24,7 @@ import java.util.stream.Collectors;
 public class QueryExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(QueryExecutor.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Jdbi jdbi;
     private final BranchIndexDao branchIndexDao;
@@ -39,6 +44,31 @@ public class QueryExecutor {
         this.indexingPipeline = indexingPipeline;
         this.repositoryDao = repositoryDao;
         this.gitOps = gitOps;
+    }
+
+    /**
+     * Pipeline wrapper that logs the caller, executes the query, and returns
+     * a CallToolResult with JSON-serialized output or an error.
+     */
+    public McpSchema.CallToolResult executeQuery(
+            CallerIdentity caller, String repo, String action,
+            Map<String, Object> params, Supplier<Object> query) {
+        log.info("Tool call: {} by {} ({})", action, caller.displayName(), caller.authMethod());
+
+        try {
+            Object result = query.get();
+            String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(result);
+            return McpSchema.CallToolResult.builder()
+                    .addTextContent(json)
+                    .isError(false)
+                    .build();
+        } catch (Exception e) {
+            log.error("Tool execution error in {}: {}", action, e.getMessage(), e);
+            return McpSchema.CallToolResult.builder()
+                    .addTextContent("Error: " + e.getMessage())
+                    .isError(true)
+                    .build();
+        }
     }
 
     /**

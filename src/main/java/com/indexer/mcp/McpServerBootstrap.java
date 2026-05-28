@@ -1,6 +1,7 @@
 package com.indexer.mcp;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indexer.auth.CallerIdentity;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
@@ -23,7 +24,6 @@ import java.util.Map;
 public class McpServerBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(McpServerBootstrap.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final QueryExecutor queryExecutor;
     private McpSyncServer stdioServer;
@@ -268,186 +268,154 @@ public class McpServerBootstrap {
     }
 
     // -----------------------------------------------------------------------
+    // Identity extraction
+    // -----------------------------------------------------------------------
+
+    private CallerIdentity extractIdentity(McpSyncServerExchange exchange) {
+        McpTransportContext ctx = exchange.transportContext();
+        if (ctx == null) {
+            return CallerIdentity.fromStdio();
+        }
+        Object identity = ctx.get(CallerIdentity.CONTEXT_KEY);
+        if (identity instanceof CallerIdentity ci) {
+            return ci;
+        }
+        return CallerIdentity.fromStdio();
+    }
+
+    // -----------------------------------------------------------------------
     // Tool handlers
     // -----------------------------------------------------------------------
 
     private McpSchema.CallToolResult handleSearchSymbols(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String query    = stringArg(args, "query");
-            String kind     = stringArg(args, "kind");
-            String language = stringArg(args, "language");
-            String repo     = stringArg(args, "repo");
-            String branch   = stringArg(args, "branch");
-            int limit       = intArg(args, "limit", 20);
-
-            var results = queryExecutor.searchSymbols(query, kind, language, repo, branch, limit);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "search_symbols", args,
+                () -> queryExecutor.searchSymbols(
+                        stringArg(args, "query"), stringArg(args, "kind"),
+                        stringArg(args, "language"), repo,
+                        stringArg(args, "branch"), intArg(args, "limit", 20)));
     }
 
     private McpSchema.CallToolResult handleGetSymbolDetail(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String repo       = stringArg(args, "repo");
-            String filePath   = stringArg(args, "file_path");
-            String symbolName = stringArg(args, "symbol_name");
-            Integer line      = args.containsKey("line") ? intArg(args, "line", 0) : null;
-            String branch     = stringArg(args, "branch");
-
-            var result = queryExecutor.getSymbolDetail(repo, filePath, symbolName, line, branch);
-            return jsonResult(result);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "get_symbol_detail", args,
+                () -> queryExecutor.getSymbolDetail(
+                        repo, stringArg(args, "file_path"),
+                        stringArg(args, "symbol_name"),
+                        args.containsKey("line") ? intArg(args, "line", 0) : null,
+                        stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleFindImplementations(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String typeName = stringArg(args, "type_name");
-            String repo     = stringArg(args, "repo");
-            String branch   = stringArg(args, "branch");
-
-            var results = queryExecutor.findImplementations(typeName, repo, branch);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "find_implementations", args,
+                () -> queryExecutor.findImplementations(
+                        stringArg(args, "type_name"), repo,
+                        stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleFindReferences(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String symbolName = stringArg(args, "symbol_name");
-            String repo       = stringArg(args, "repo");
-            String branch     = stringArg(args, "branch");
-            int limit         = intArg(args, "limit", 20);
-
-            var results = queryExecutor.findReferences(symbolName, repo, branch, limit);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "find_references", args,
+                () -> queryExecutor.findReferences(
+                        stringArg(args, "symbol_name"), repo,
+                        stringArg(args, "branch"), intArg(args, "limit", 20)));
     }
 
     private McpSchema.CallToolResult handleSearchCode(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String query    = stringArg(args, "query");
-            String language = stringArg(args, "language");
-            String repo     = stringArg(args, "repo");
-            String branch   = stringArg(args, "branch");
-            int limit       = intArg(args, "limit", 20);
-
-            var results = queryExecutor.searchCode(query, language, repo, branch, limit);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "search_code", args,
+                () -> queryExecutor.searchCode(
+                        stringArg(args, "query"), stringArg(args, "language"),
+                        repo, stringArg(args, "branch"),
+                        intArg(args, "limit", 20)));
     }
 
     private McpSchema.CallToolResult handleSearchFiles(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String pattern  = stringArg(args, "pattern");
-            String language = stringArg(args, "language");
-            String repo     = stringArg(args, "repo");
-            String branch   = stringArg(args, "branch");
-            int limit       = intArg(args, "limit", 50);
-
-            var results = queryExecutor.searchFiles(pattern, language, repo, branch, limit);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "search_files", args,
+                () -> queryExecutor.searchFiles(
+                        stringArg(args, "pattern"), stringArg(args, "language"),
+                        repo, stringArg(args, "branch"),
+                        intArg(args, "limit", 50)));
     }
 
     private McpSchema.CallToolResult handleGetRepoSummary(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String repoName = stringArg(args, "repo_name");
-            String branch   = stringArg(args, "branch");
-            var result = queryExecutor.getRepoSummary(repoName, branch);
-            return jsonResult(result);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo_name");
+        return queryExecutor.executeQuery(caller, repo, "get_repo_summary", args,
+                () -> queryExecutor.getRepoSummary(repo, stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleGetFileSummary(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String repoName = stringArg(args, "repo_name");
-            String filePath = stringArg(args, "file_path");
-            String branch   = stringArg(args, "branch");
-            var result = queryExecutor.getFileSummary(repoName, filePath, branch);
-            return jsonResult(result);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo_name");
+        return queryExecutor.executeQuery(caller, repo, "get_file_summary", args,
+                () -> queryExecutor.getFileSummary(
+                        repo, stringArg(args, "file_path"),
+                        stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleGetDirectoryTree(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String repoName = stringArg(args, "repo_name");
-            String path     = stringArg(args, "path");
-            int depth       = intArg(args, "depth", 3);
-            String branch   = stringArg(args, "branch");
-
-            var results = queryExecutor.getDirectoryTree(repoName, path, depth, branch);
-            return jsonResult(results);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo_name");
+        return queryExecutor.executeQuery(caller, repo, "get_directory_tree", args,
+                () -> queryExecutor.getDirectoryTree(
+                        repo, stringArg(args, "path"),
+                        intArg(args, "depth", 3), stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleGetIndexHealth(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var result = queryExecutor.getIndexHealth();
-            return jsonResult(result);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var caller = extractIdentity(exchange);
+        return queryExecutor.executeQuery(caller, null, "get_index_health", Map.of(),
+                () -> queryExecutor.getIndexHealth());
     }
 
     private McpSchema.CallToolResult handleCheckSync(
             McpSyncServerExchange exchange,
             McpSchema.CallToolRequest request) {
-        try {
-            var args = request.arguments();
-            String repoName = stringArg(args, "repo_name");
-            String localSha = stringArg(args, "local_sha");
-            String branch   = stringArg(args, "branch");
-
-            var result = queryExecutor.checkSync(repoName, localSha, branch);
-            return jsonResult(result);
-        } catch (Exception e) {
-            return errorResult(e);
-        }
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo_name");
+        return queryExecutor.executeQuery(caller, repo, "check_sync", args,
+                () -> queryExecutor.checkSync(
+                        repo, stringArg(args, "local_sha"),
+                        stringArg(args, "branch")));
     }
 
     // -----------------------------------------------------------------------
@@ -470,23 +438,4 @@ public class McpServerBootstrap {
         }
     }
 
-    private McpSchema.CallToolResult jsonResult(Object data) {
-        try {
-            String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data);
-            return McpSchema.CallToolResult.builder()
-                    .addTextContent(json)
-                    .isError(false)
-                    .build();
-        } catch (Exception e) {
-            return errorResult(e);
-        }
-    }
-
-    private McpSchema.CallToolResult errorResult(Exception e) {
-        log.error("Tool execution error: {}", e.getMessage(), e);
-        return McpSchema.CallToolResult.builder()
-                .addTextContent("Error: " + e.getMessage())
-                .isError(true)
-                .build();
-    }
 }

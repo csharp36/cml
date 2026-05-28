@@ -86,8 +86,9 @@ public class ConfigLoader {
         IndexerConfig.LanguagesConfig languages = parseLanguages(root.get("languages"));
         IndexerConfig.AdminConfig admin = parseAdmin(root.get("admin"));
         IndexerConfig.BranchConfig branches = parseBranches(root.get("branches"));
+        IndexerConfig.McpAuthConfig mcpAuth = parseMcpAuth(root.get("auth"));
 
-        return new IndexerConfig(server, database, repositories, languages, admin, branches);
+        return new IndexerConfig(server, database, repositories, languages, admin, branches, mcpAuth);
     }
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
@@ -169,6 +170,22 @@ public class ConfigLoader {
         int ttlDays = node.has("ttlDays") ? node.get("ttlDays").asInt(14) : 14;
         int cleanupIntervalHours = node.has("cleanupIntervalHours") ? node.get("cleanupIntervalHours").asInt(24) : 24;
         return new IndexerConfig.BranchConfig(autoIndex, ttlDays, cleanupIntervalHours);
+    }
+
+    private IndexerConfig.McpAuthConfig parseMcpAuth(JsonNode node) {
+        if (node == null) return null;
+        JsonNode apiKeysNode = node.get("apiKeys");
+        if (apiKeysNode == null || !apiKeysNode.isArray()) return new IndexerConfig.McpAuthConfig(List.of());
+        List<IndexerConfig.McpAuthConfig.ApiKeyEntry> keys = new ArrayList<>();
+        for (JsonNode keyNode : apiKeysNode) {
+            String key = textOrNull(keyNode, "key");
+            String id = textOrNull(keyNode, "id");
+            String name = textOrNull(keyNode, "name");
+            if (key != null && id != null) {
+                keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id));
+            }
+        }
+        return new IndexerConfig.McpAuthConfig(keys);
     }
 
     private String textOrNull(JsonNode node, String field) {

@@ -12,7 +12,8 @@ public record IndexerConfig(
         List<RepositoryConfig> repositories,
         LanguagesConfig languages,
         AdminConfig admin,
-        BranchConfig branches
+        BranchConfig branches,
+        @JsonProperty("auth") McpAuthConfig mcpAuth
 ) {
     public record ServerConfig(
             String cloneBaseDir,
@@ -75,6 +76,14 @@ public record IndexerConfig(
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record McpAuthConfig(List<ApiKeyEntry> apiKeys) {
+        public McpAuthConfig {
+            if (apiKeys == null) apiKeys = List.of();
+        }
+        public record ApiKeyEntry(String key, String id, String name) {}
+    }
+
     public IndexerConfig {
         if (server == null) throw new ConfigValidationException("server section is required");
         if (database == null) throw new ConfigValidationException("database section is required");
@@ -82,5 +91,6 @@ public record IndexerConfig(
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
         if (branches == null) branches = new BranchConfig(true, 14, 24);
+        if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of());
     }
 }

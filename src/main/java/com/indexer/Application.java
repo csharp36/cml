@@ -13,7 +13,10 @@ import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
 import com.indexer.indexing.treesitter.TSParserPool;
 import com.indexer.indexing.treesitter.TreeSitterEngine;
+import com.indexer.auth.ApiKeyAuthenticator;
+import com.indexer.auth.CallerIdentity;
 import com.indexer.mcp.McpServerBootstrap;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import com.indexer.queue.EventQueuePoller;
 import com.indexer.repository.GitOperations;
@@ -24,6 +27,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -105,9 +109,30 @@ public class Application {
                 log.warn("{} events failed in previous runs. Use get_index_health for details.", failedCount);
             }
 
+            // 5b. Set up API key authenticator
+            var apiKeyConfigs = config.mcpAuth().apiKeys().stream()
+                    .map(e -> new ApiKeyAuthenticator.ApiKeyConfig(e.key(), e.id(), e.name()))
+                    .toList();
+            var authenticator = new ApiKeyAuthenticator(apiKeyConfigs);
+
             // 6. Build Streamable HTTP transport
             var streamableTransport = HttpServletStreamableServerTransportProvider.builder()
                     .mcpEndpoint("/mcp")
+                    .contextExtractor(request -> {
+                        CallerIdentity identity;
+                        if (!authenticator.isEnabled()) {
+                            identity = CallerIdentity.anonymous("streamable-http");
+                        } else {
+                            String authHeader = request.getHeader("Authorization");
+                            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                                throw new RuntimeException("Missing or invalid Authorization header");
+                            }
+                            String token = authHeader.substring("Bearer ".length());
+                            identity = authenticator.authenticate(token, request.getRemoteAddr())
+                                    .orElseThrow(() -> new RuntimeException("Invalid API key"));
+                        }
+                        return McpTransportContext.create(Map.of(CallerIdentity.CONTEXT_KEY, identity));
+                    })
                     .build();
 
             httpServer = new HttpServer(eventDao, repositoryDao, streamableTransport);
