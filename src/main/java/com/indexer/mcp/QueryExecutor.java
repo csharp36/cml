@@ -948,6 +948,138 @@ public class QueryExecutor {
     }
 
     /**
+     * Find symbols related to a given symbol through SCIP relationships.
+     * Flat list of direct edges (not recursive).
+     */
+    public Map<String, Object> getSymbolReferences(String repo, String symbolName, String filePath,
+            String relationshipKind, String direction, int limit) {
+        if (direction == null || direction.isBlank()) direction = "inbound";
+        if (limit <= 0) limit = 50;
+        final String dir = direction;
+        final int maxResults = limit;
+
+        return jdbi.withHandle(handle -> {
+            int repoId = resolveRepoId(handle, repo);
+            if (repoId < 0) {
+                return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
+            }
+
+            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, null);
+            if (resolved == null) {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("symbol", symbolName);
+                result.put("message", "Symbol not found in SCIP data");
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) result.put("scip_status", scipStatus);
+                return result;
+            }
+
+            String scipSymbol = (String) resolved.get("scip_symbol");
+
+            var references = new ArrayList<Map<String, Object>>();
+
+            // Inbound: who references this symbol?
+            if ("inbound".equals(dir) || "both".equals(dir)) {
+                var sb = new StringBuilder("""
+                        SELECT sr.from_symbol, sr.kind AS relationship, sr.file_path, sr.line
+                        FROM scip_relationships sr
+                        WHERE sr.repo_id = :repoId AND sr.to_symbol = :symbol
+                        """);
+                var params = new LinkedHashMap<String, Object>();
+                params.put("repoId", repoId);
+                params.put("symbol", scipSymbol);
+                if (relationshipKind != null && !relationshipKind.isBlank()) {
+                    sb.append(" AND sr.kind = :kind");
+                    params.put("kind", relationshipKind);
+                }
+                sb.append(" LIMIT :limit");
+                params.put("limit", maxResults);
+
+                var q = handle.createQuery(sb.toString());
+                params.forEach(q::bind);
+                for (var row : q.mapToMap().list()) {
+                    var ref = new LinkedHashMap<String, Object>();
+                    String fromSymbol = (String) row.get("from_symbol");
+                    // Enrich with symbol metadata
+                    var symRow = handle.createQuery("""
+                            SELECT display_name, kind FROM scip_symbols
+                            WHERE repo_id = :repoId AND scip_symbol = :symbol
+                            """)
+                            .bind("repoId", repoId)
+                            .bind("symbol", fromSymbol)
+                            .mapToMap()
+                            .findOne();
+                    if (symRow.isPresent()) {
+                        ref.put("symbol", symRow.get().get("display_name"));
+                        ref.put("kind", symRow.get().get("kind"));
+                    }
+                    ref.put("scip_symbol", fromSymbol);
+                    ref.put("relationship", row.get("relationship"));
+                    ref.put("file_path", row.get("file_path"));
+                    ref.put("line", row.get("line"));
+                    ref.put("direction", "inbound");
+                    references.add(ref);
+                }
+            }
+
+            // Outbound: what does this symbol reference?
+            if ("outbound".equals(dir) || "both".equals(dir)) {
+                var sb = new StringBuilder("""
+                        SELECT sr.to_symbol, sr.kind AS relationship, sr.file_path, sr.line
+                        FROM scip_relationships sr
+                        WHERE sr.repo_id = :repoId AND sr.from_symbol = :symbol
+                        """);
+                var params = new LinkedHashMap<String, Object>();
+                params.put("repoId", repoId);
+                params.put("symbol", scipSymbol);
+                if (relationshipKind != null && !relationshipKind.isBlank()) {
+                    sb.append(" AND sr.kind = :kind");
+                    params.put("kind", relationshipKind);
+                }
+                sb.append(" LIMIT :limit");
+                params.put("limit", maxResults);
+
+                var q = handle.createQuery(sb.toString());
+                params.forEach(q::bind);
+                for (var row : q.mapToMap().list()) {
+                    var ref = new LinkedHashMap<String, Object>();
+                    String toSymbol = (String) row.get("to_symbol");
+                    var symRow = handle.createQuery("""
+                            SELECT display_name, kind FROM scip_symbols
+                            WHERE repo_id = :repoId AND scip_symbol = :symbol
+                            """)
+                            .bind("repoId", repoId)
+                            .bind("symbol", toSymbol)
+                            .mapToMap()
+                            .findOne();
+                    if (symRow.isPresent()) {
+                        ref.put("symbol", symRow.get().get("display_name"));
+                        ref.put("kind", symRow.get().get("kind"));
+                    }
+                    ref.put("scip_symbol", toSymbol);
+                    ref.put("relationship", row.get("relationship"));
+                    ref.put("file_path", row.get("file_path"));
+                    ref.put("line", row.get("line"));
+                    ref.put("direction", "outbound");
+                    references.add(ref);
+                }
+            }
+
+            var result = new LinkedHashMap<String, Object>();
+            result.put("symbol", resolved.get("display_name"));
+            result.put("scip_symbol", scipSymbol);
+            result.put("kind", resolved.get("kind"));
+            result.put("file_path", resolved.get("file_path"));
+            result.put("references", references);
+            result.put("total", references.size());
+            String scipStatus = getScipStatus(repo);
+            if (scipStatus != null) result.put("scip_status", scipStatus);
+
+            return result;
+        });
+    }
+
+    /**
      * Check whether a local repository HEAD SHA matches the indexed SHA.
      * Supports branch-aware comparison.
      */
