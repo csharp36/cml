@@ -91,6 +91,25 @@ class GitHubPermissionResolverTest {
                 .hasMessageContaining("Connection refused");
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void nonOkStatusThrowsPermissionResolutionException() throws Exception {
+        var repositoryDao = mock(RepositoryDao.class);
+        when(repositoryDao.findAll()).thenReturn(List.of(repo("payments-api")));
+
+        var httpClient = mock(HttpClient.class);
+        var httpResponse = mock(HttpResponse.class);
+        when(httpResponse.statusCode()).thenReturn(403);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(httpResponse);
+
+        var resolver = new GitHubPermissionResolver("my-org", "ghp_token", repositoryDao, httpClient);
+
+        assertThatThrownBy(() -> resolver.resolveAllowedRepos(List.of("team-payments")))
+                .isInstanceOf(PermissionResolutionException.class)
+                .hasMessageContaining("403");
+    }
+
     private Repository repo(String name) {
         return new Repository(0, name, "https://github.com/org/" + name, "main", "/repos/" + name, "ssh-key", null, null);
     }

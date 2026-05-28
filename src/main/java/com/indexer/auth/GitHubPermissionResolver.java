@@ -7,6 +7,7 @@ import com.indexer.model.Repository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -53,15 +54,16 @@ public class GitHubPermissionResolver implements PermissionResolver {
                     }
                 }
             } catch (Exception e) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 throw new PermissionResolutionException(
-                        "Failed to resolve repos for group '" + group + "': " + e.getMessage(), e);
+                        "Failed to resolve repos for group '" + group + "': " + msg, e);
             }
         }
         log.info("Resolved {} allowed repos for {} groups", allowed.size(), groups.size());
         return Set.copyOf(allowed);
     }
 
-    private Set<String> fetchTeamRepos(String teamSlug) throws Exception {
+    private Set<String> fetchTeamRepos(String teamSlug) throws IOException, InterruptedException {
         Set<String> repos = new HashSet<>();
         String url = "https://api.github.com/orgs/" + org + "/teams/" + teamSlug + "/repos?per_page=100";
 
@@ -76,8 +78,8 @@ public class GitHubPermissionResolver implements PermissionResolver {
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
-                log.warn("GitHub API returned {} for team {}", response.statusCode(), teamSlug);
-                break;
+                throw new PermissionResolutionException(
+                        "GitHub API returned " + response.statusCode() + " for team '" + teamSlug + "'");
             }
 
             List<Map<String, Object>> repoList = MAPPER.readValue(
