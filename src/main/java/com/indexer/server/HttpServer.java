@@ -1,6 +1,7 @@
 package com.indexer.server;
 
 import com.indexer.db.EventDao;
+import com.indexer.db.RepositoryDao;
 import com.indexer.webhook.WebhookPayload;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -13,10 +14,12 @@ import java.util.Map;
 public class HttpServer {
     private static final Logger log = LoggerFactory.getLogger(HttpServer.class);
     private final EventDao eventDao;
+    private final RepositoryDao repositoryDao;
     private Javalin app;
 
-    public HttpServer(EventDao eventDao) {
+    public HttpServer(EventDao eventDao, RepositoryDao repositoryDao) {
         this.eventDao = eventDao;
+        this.repositoryDao = repositoryDao;
     }
 
     public Javalin createApp() {
@@ -58,6 +61,11 @@ public class HttpServer {
         }
         if (payload == null || !payload.isValid()) {
             ctx.status(400).json(Map.of("error", "Missing required fields: repoName, repoPath, eventType, currentSha"));
+            return;
+        }
+        if (repositoryDao.findByName(payload.repoName()).isEmpty()) {
+            log.warn("Webhook received for unknown repo: {}", payload.repoName());
+            ctx.status(404).json(Map.of("error", "Unknown repository: " + payload.repoName()));
             return;
         }
         long eventId = eventDao.insert(payload.repoName(), payload.repoPath(), payload.eventType(),

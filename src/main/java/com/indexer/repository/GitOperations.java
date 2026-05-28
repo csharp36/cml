@@ -99,6 +99,27 @@ public class GitOperations {
     }
 
     /**
+     * Check if a SHA exists and is reachable in the local repository.
+     */
+    public boolean shaExists(Path repoDir, String sha) {
+        try {
+            List<String> cmd = List.of("git", "cat-file", "-t", sha);
+            runCommandOutput(cmd, repoDir, null);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Reset the working tree to match a remote branch, discarding local state.
+     */
+    public void resetToRemote(Path repoDir, String branch) throws IOException {
+        List<String> cmd = List.of("git", "reset", "--hard", "origin/" + branch);
+        runCommand(cmd, repoDir, null);
+    }
+
+    /**
      * Check if a remote branch exists.
      */
     public boolean remoteBranchExists(Path repoDir, String branch) throws IOException {

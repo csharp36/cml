@@ -64,6 +64,12 @@ public class IndexingPipeline {
             return;
         }
 
+        if (!gitOps.shaExists(repoDir, fromSha)) {
+            log.warn("fromSha {} is unreachable in repo {} (likely force-push or rebase), falling back to full index", fromSha, repoId);
+            fullIndex(repoId, branch, repoDir);
+            return;
+        }
+
         log.info("Incremental indexing repo {} branch {} from {} to {}", repoId, branch, fromSha, toSha);
 
         List<GitOperations.DiffEntry> diffEntries = gitOps.diff(repoDir, fromSha, toSha);

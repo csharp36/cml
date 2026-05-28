@@ -121,7 +121,7 @@ class IntegrationSmokeTest {
         assertThat(((Number) health.get("totalPendingEvents")).intValue()).isEqualTo(0);
 
         // Verify: webhook POST inserts a pending event in DB
-        var httpServer = new HttpServer(eventDao);
+        var httpServer = new HttpServer(eventDao, repositoryDao);
         var app = httpServer.createApp();
         JavalinTest.test(app, (server, client) -> {
             var requestBody = RequestBody.create(

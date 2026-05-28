@@ -3,6 +3,7 @@ package com.indexer.mcp.transport;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indexer.db.DatabaseManager;
 import com.indexer.db.EventDao;
+import com.indexer.db.RepositoryDao;
 import com.indexer.mcp.McpServerBootstrap;
 import com.indexer.server.HttpServer;
 import org.jdbi.v3.core.Jdbi;
@@ -48,7 +49,8 @@ class SseTransportIntegrationTest {
         }
 
         // Set up HTTP server with SSE transport
-        httpServer = new HttpServer(eventDao);
+        var repositoryDao = new RepositoryDao(jdbi);
+        httpServer = new HttpServer(eventDao, repositoryDao);
         var sseTransport = new JavalinSseServerTransportProvider(new ObjectMapper());
         sseTransport.registerRoutes(httpServer.getApp());
         httpServer.start(port);

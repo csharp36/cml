@@ -107,7 +107,7 @@ public class Application {
             }
 
             // 6. Create HTTP server with SSE transport
-            httpServer = new HttpServer(eventDao);
+            httpServer = new HttpServer(eventDao, repositoryDao);
             var sseTransport = new JavalinSseServerTransportProvider(new ObjectMapper());
             sseTransport.registerRoutes(httpServer.getApp());
 
@@ -133,13 +133,16 @@ public class Application {
                     String branch = event.branch() != null ? event.branch() : "main";
                     if ("main".equals(branch) || branch.equals(repo.branch())) {
                         // Main branch: fetch, fast-forward, incremental index
-                        gitOps.fetch(Path.of(repo.clonePath()), null);
+                        var repoDir = Path.of(repo.clonePath());
+                        gitOps.fetch(repoDir, null);
                         try {
-                            gitOps.fastForward(Path.of(repo.clonePath()), repo.branch());
+                            gitOps.fastForward(repoDir, repo.branch());
                         } catch (IOException e) {
-                            log.warn("Fast-forward failed for {}, continuing with incremental: {}", repo.name(), e.getMessage());
+                            log.warn("Fast-forward failed for {} (likely force-push), resetting to origin/{}: {}",
+                                    repo.name(), repo.branch(), e.getMessage());
+                            gitOps.resetToRemote(repoDir, repo.branch());
                         }
-                        indexingPipeline.incrementalIndex(repo.id(), branch, Path.of(repo.clonePath()),
+                        indexingPipeline.incrementalIndex(repo.id(), branch, repoDir,
                                 event.previousSha(), event.currentSha());
                     } else {
                         // Feature branch: fetch, then delta-index from main

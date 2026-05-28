@@ -74,7 +74,7 @@ class AdminIntegrationTest {
             port = ss.getLocalPort();
         }
 
-        httpServer = new HttpServer(eventDao);
+        httpServer = new HttpServer(eventDao, repositoryDao);
         var adminApi = new AdminApi(adminService, TOKEN);
         adminApi.registerRoutes(httpServer.getApp());
         httpServer.start(port);
