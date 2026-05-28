@@ -784,6 +784,170 @@ public class QueryExecutor {
     }
 
     /**
+     * Resolve a display name to SCIP symbol row(s). Returns the first match, optionally
+     * narrowed by file_path and kind.
+     */
+    private Map<String, Object> resolveScipSymbol(org.jdbi.v3.core.Handle handle,
+            int repoId, String symbolName, String filePath, String kind) {
+        var sb = new StringBuilder("""
+                SELECT scip_symbol, display_name, kind, documentation, file_path, start_line, end_line
+                FROM scip_symbols
+                WHERE repo_id = :repoId AND display_name = :symbolName
+                """);
+        var params = new LinkedHashMap<String, Object>();
+        params.put("repoId", repoId);
+        params.put("symbolName", symbolName);
+
+        if (filePath != null && !filePath.isBlank()) {
+            sb.append(" AND file_path = :filePath");
+            params.put("filePath", filePath);
+        }
+        if (kind != null && !kind.isBlank()) {
+            sb.append(" AND kind = :kind");
+            params.put("kind", kind);
+        }
+        sb.append(" LIMIT 1");
+
+        var q = handle.createQuery(sb.toString());
+        params.forEach(q::bind);
+        return q.mapToMap().findOne().orElse(null);
+    }
+
+    /**
+     * Look up the repo ID by name. Returns -1 if not found.
+     */
+    private int resolveRepoId(org.jdbi.v3.core.Handle handle, String repoName) {
+        return handle.createQuery("SELECT id FROM repositories WHERE name = :name")
+                .bind("name", repoName)
+                .mapTo(Integer.class)
+                .findOne()
+                .orElse(-1);
+    }
+
+    /**
+     * Recursively build a type hierarchy tree in one direction.
+     * @param direction "up" follows from_symbol->to_symbol, "down" follows to_symbol->from_symbol
+     */
+    private List<Map<String, Object>> traverseHierarchy(org.jdbi.v3.core.Handle handle,
+            int repoId, String scipSymbol, String direction, int maxDepth, int currentDepth) {
+        if (currentDepth >= maxDepth) return List.of();
+
+        List<Map<String, Object>> edges;
+        if ("up".equals(direction)) {
+            edges = handle.createQuery("""
+                    SELECT to_symbol AS related_symbol, kind AS relationship
+                    FROM scip_relationships
+                    WHERE repo_id = :repoId AND from_symbol = :symbol AND kind IN ('implements', 'extends')
+                    """)
+                    .bind("repoId", repoId)
+                    .bind("symbol", scipSymbol)
+                    .mapToMap()
+                    .list();
+        } else {
+            edges = handle.createQuery("""
+                    SELECT from_symbol AS related_symbol, kind AS relationship
+                    FROM scip_relationships
+                    WHERE repo_id = :repoId AND to_symbol = :symbol AND kind IN ('implements', 'extends')
+                    """)
+                    .bind("repoId", repoId)
+                    .bind("symbol", scipSymbol)
+                    .mapToMap()
+                    .list();
+        }
+
+        var results = new ArrayList<Map<String, Object>>();
+        for (var edge : edges) {
+            String relatedSymbol = (String) edge.get("related_symbol");
+            String relationship = (String) edge.get("relationship");
+
+            var node = new LinkedHashMap<String, Object>();
+            // Enrich with symbol metadata
+            var symRow = handle.createQuery("""
+                    SELECT display_name, kind, file_path, start_line, documentation
+                    FROM scip_symbols
+                    WHERE repo_id = :repoId AND scip_symbol = :symbol
+                    """)
+                    .bind("repoId", repoId)
+                    .bind("symbol", relatedSymbol)
+                    .mapToMap()
+                    .findOne();
+
+            if (symRow.isPresent()) {
+                node.put("symbol", symRow.get().get("display_name"));
+                node.put("scip_symbol", relatedSymbol);
+                node.put("kind", symRow.get().get("kind"));
+                node.put("file_path", symRow.get().get("file_path"));
+                node.put("line", symRow.get().get("start_line"));
+            } else {
+                node.put("scip_symbol", relatedSymbol);
+            }
+            node.put("relationship", relationship);
+
+            // Recurse
+            String childKey = "up".equals(direction) ? "supertypes" : "subtypes";
+            var children = traverseHierarchy(handle, repoId, relatedSymbol, direction, maxDepth, currentDepth + 1);
+            if (!children.isEmpty()) {
+                node.put(childKey, children);
+            }
+
+            results.add(node);
+        }
+        return results;
+    }
+
+    /**
+     * Get the type hierarchy for a symbol — supertypes, subtypes, or both.
+     */
+    public Map<String, Object> getTypeHierarchy(String repo, String symbolName, String filePath,
+            String kind, String direction, int depth) {
+        if (direction == null || direction.isBlank()) direction = "both";
+        if (depth <= 0) depth = 3;
+        final String dir = direction;
+        final int maxDepth = depth;
+
+        return jdbi.withHandle(handle -> {
+            int repoId = resolveRepoId(handle, repo);
+            if (repoId < 0) {
+                return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
+            }
+
+            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, kind);
+            if (resolved == null) {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("symbol", symbolName);
+                result.put("message", "Symbol not found in SCIP data");
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) result.put("scip_status", scipStatus);
+                return result;
+            }
+
+            String scipSymbol = (String) resolved.get("scip_symbol");
+
+            var result = new LinkedHashMap<String, Object>();
+            result.put("symbol", resolved.get("display_name"));
+            result.put("scip_symbol", scipSymbol);
+            result.put("kind", resolved.get("kind"));
+            result.put("file_path", resolved.get("file_path"));
+            result.put("line", resolved.get("start_line"));
+            if (resolved.get("documentation") != null) {
+                result.put("documentation", resolved.get("documentation"));
+            }
+
+            if ("up".equals(dir) || "both".equals(dir)) {
+                result.put("supertypes", traverseHierarchy(handle, repoId, scipSymbol, "up", maxDepth, 0));
+            }
+            if ("down".equals(dir) || "both".equals(dir)) {
+                result.put("subtypes", traverseHierarchy(handle, repoId, scipSymbol, "down", maxDepth, 0));
+            }
+
+            String scipStatus = getScipStatus(repo);
+            if (scipStatus != null) result.put("scip_status", scipStatus);
+
+            return result;
+        });
+    }
+
+    /**
      * Check whether a local repository HEAD SHA matches the indexed SHA.
      * Supports branch-aware comparison.
      */
