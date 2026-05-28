@@ -6,7 +6,6 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,18 +32,19 @@ public class PermissionCache {
         }
 
         String cacheKey = caller.userId();
-        var entry = cache.get(cacheKey);
-        if (entry != null && entry.resolvedAt().plus(ttl).isAfter(Instant.now())) {
-            return entry.allowedRepos();
+        if (cacheKey == null) {
+            throw new IllegalArgumentException("Cannot cache permissions for caller with null userId");
         }
 
-        // Cache miss or expired — resolve via platform API (fail-closed: exception propagates)
-        log.info("Resolving permissions for user {} ({} groups)", caller.userId(), caller.groups().size());
-        Set<String> resolved = resolver.resolveAllowedRepos(caller.groups());
-        Set<String> combined = new HashSet<>(resolved);
-        combined.addAll(openRepos);
-        Set<String> result = Set.copyOf(combined);
-        cache.put(cacheKey, new CacheEntry(result, Instant.now()));
-        return result;
+        return cache.compute(cacheKey, (key, existing) -> {
+            if (existing != null && existing.resolvedAt().plus(ttl).isAfter(Instant.now())) {
+                return existing;
+            }
+            log.debug("Resolving permissions for user {} ({} groups)", caller.userId(), caller.groups().size());
+            Set<String> resolved = resolver.resolveAllowedRepos(caller.groups());
+            Set<String> combined = new HashSet<>(resolved);
+            combined.addAll(openRepos);
+            return new CacheEntry(Set.copyOf(combined), Instant.now());
+        }).allowedRepos();
     }
 }
