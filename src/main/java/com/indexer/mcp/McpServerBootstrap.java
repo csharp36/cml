@@ -41,7 +41,7 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 14 tools registered");
+        log.info("MCP server started over stdio with 15 tools registered");
     }
 
     public void startHttp(McpStreamableServerTransportProvider httpTransport) {
@@ -61,8 +61,9 @@ public class McpServerBootstrap {
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
+                .toolCall(searchBranchesTool(), this::handleSearchBranches)
                 .build();
-        log.info("MCP server started over Streamable HTTP with 14 tools registered");
+        log.info("MCP server started over Streamable HTTP with 15 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -82,6 +83,7 @@ public class McpServerBootstrap {
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
+                .toolCall(searchBranchesTool(), this::handleSearchBranches)
                 .build();
     }
 
@@ -317,6 +319,23 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool searchBranchesTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("repo",           Map.of("type", "string", "description", "Repository name"));
+        props.put("query",          Map.of("type", "string", "description", "Regex pattern for symbol name"));
+        props.put("kind",           Map.of("type", "string", "description", "Optional symbol kind filter (class, method, function, ...)"));
+        props.put("branch_pattern", Map.of("type", "string", "description", "Regex to filter branches (default: all indexed branches)"));
+        props.put("max_branches",   Map.of("type", "integer", "description", "Max branches to search (default 50)", "default", 50));
+        props.put("limit",          Map.of("type", "integer", "description", "Max results per branch (default 20)", "default", 20));
+        var schema = new McpSchema.JsonSchema("object", props,
+                List.of("repo", "query"), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("search_branches")
+                .description("Search for a symbol across multiple indexed branches. Returns which branches have changes involving the matched symbol.")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -518,6 +537,20 @@ public class McpServerBootstrap {
                 () -> queryExecutor.diffBranches(
                         repo, stringArg(args, "branch_a"), stringArg(args, "branch_b"),
                         stringArg(args, "detail"), intArg(args, "limit", 100)));
+    }
+
+    private McpSchema.CallToolResult handleSearchBranches(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "search_branches", args,
+                () -> queryExecutor.searchBranches(
+                        repo, stringArg(args, "query"), stringArg(args, "kind"),
+                        stringArg(args, "branch_pattern"),
+                        intArg(args, "max_branches", 50),
+                        intArg(args, "limit", 20)));
     }
 
     private java.time.Instant parseInstant(String s) {
