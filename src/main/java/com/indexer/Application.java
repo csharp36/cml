@@ -13,8 +13,10 @@ import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
 import com.indexer.indexing.treesitter.TSParserPool;
 import com.indexer.indexing.treesitter.TreeSitterEngine;
-import com.indexer.auth.ApiKeyAuthenticator;
-import com.indexer.auth.CallerIdentity;
+import com.indexer.auth.*;
+import java.time.Duration;
+import java.util.Set;
+import java.util.HashSet;
 import com.indexer.mcp.McpServerBootstrap;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
@@ -115,12 +117,35 @@ public class Application {
                     .toList();
             var authenticator = new ApiKeyAuthenticator(apiKeyConfigs);
 
+            // 5c. Set up JWT validator (if OAuth configured)
+            JwtValidator jwtValidator = null;
+            if (config.mcpAuth().oauth() != null && config.mcpAuth().oauth().jwksUrl() != null) {
+                var oauth = config.mcpAuth().oauth();
+                jwtValidator = new JwtValidator(oauth.jwksUrl(), oauth.issuer(), oauth.audience(), oauth.groupsClaim());
+            }
+
+            // 5d. Set up permission resolver and cache
+            PermissionCache permissionCache = null;
+            if (config.mcpAuth().permissions() != null && !"none".equals(config.mcpAuth().permissions().type())) {
+                var permConfig = config.mcpAuth().permissions();
+                PermissionResolver resolver;
+                if ("github".equals(permConfig.type())) {
+                    resolver = new GitHubPermissionResolver(permConfig.org(), permConfig.serviceAccountToken(), repositoryDao);
+                } else {
+                    resolver = new NoOpPermissionResolver(repositoryDao);
+                }
+                Set<String> openRepos = new HashSet<>(permConfig.openRepos());
+                permissionCache = new PermissionCache(resolver, openRepos, Duration.ofMinutes(30));
+            }
+
             // 6. Build Streamable HTTP transport
+            final JwtValidator finalJwtValidator = jwtValidator;
+
             var streamableTransport = HttpServletStreamableServerTransportProvider.builder()
                     .mcpEndpoint("/mcp")
                     .contextExtractor(request -> {
                         CallerIdentity identity;
-                        if (!authenticator.isEnabled()) {
+                        if (!authenticator.isEnabled() && finalJwtValidator == null) {
                             identity = CallerIdentity.anonymous("streamable-http");
                         } else {
                             String authHeader = request.getHeader("Authorization");
@@ -128,8 +153,16 @@ public class Application {
                                 throw new RuntimeException("Missing or invalid Authorization header");
                             }
                             String token = authHeader.substring("Bearer ".length());
-                            identity = authenticator.authenticate(token, request.getRemoteAddr())
-                                    .orElseThrow(() -> new RuntimeException("Invalid API key"));
+                            String sourceIp = request.getRemoteAddr();
+
+                            if (finalJwtValidator != null && token.contains(".")) {
+                                identity = finalJwtValidator.validate(token, sourceIp);
+                            } else if (authenticator.isEnabled()) {
+                                identity = authenticator.authenticate(token, sourceIp)
+                                        .orElseThrow(() -> new RuntimeException("Invalid API key"));
+                            } else {
+                                throw new RuntimeException("No authentication method available for token");
+                            }
                         }
                         return McpTransportContext.create(Map.of(CallerIdentity.CONTEXT_KEY, identity));
                     })
@@ -138,7 +171,7 @@ public class Application {
             httpServer = new HttpServer(eventDao, repositoryDao, streamableTransport);
 
             // Create admin API
-            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps);
+            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache);
             adminService = new AdminService(
                     repoManager, repositoryDao, fileDao, symbolDao,
                     eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);

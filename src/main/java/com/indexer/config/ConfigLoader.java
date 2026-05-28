@@ -174,18 +174,54 @@ public class ConfigLoader {
 
     private IndexerConfig.McpAuthConfig parseMcpAuth(JsonNode node) {
         if (node == null) return null;
-        JsonNode apiKeysNode = node.get("apiKeys");
-        if (apiKeysNode == null || !apiKeysNode.isArray()) return new IndexerConfig.McpAuthConfig(List.of());
+
+        // API keys
         List<IndexerConfig.McpAuthConfig.ApiKeyEntry> keys = new ArrayList<>();
-        for (JsonNode keyNode : apiKeysNode) {
-            String key = textOrNull(keyNode, "key");
-            String id = textOrNull(keyNode, "id");
-            String name = textOrNull(keyNode, "name");
-            if (key != null && id != null) {
-                keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id));
+        JsonNode apiKeysNode = node.get("apiKeys");
+        if (apiKeysNode != null && apiKeysNode.isArray()) {
+            for (JsonNode keyNode : apiKeysNode) {
+                String key = textOrNull(keyNode, "key");
+                String id = textOrNull(keyNode, "id");
+                String name = textOrNull(keyNode, "name");
+                if (key != null && id != null) {
+                    keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id));
+                }
             }
         }
-        return new IndexerConfig.McpAuthConfig(keys);
+
+        // OAuth
+        IndexerConfig.McpAuthConfig.OAuthConfig oauth = null;
+        JsonNode oauthNode = node.get("oauth");
+        if (oauthNode != null) {
+            oauth = new IndexerConfig.McpAuthConfig.OAuthConfig(
+                    textOrNull(oauthNode, "jwksUrl"),
+                    textOrNull(oauthNode, "issuer"),
+                    textOrNull(oauthNode, "audience"),
+                    textOrNull(oauthNode, "groupsClaim")
+            );
+        }
+
+        // Permissions
+        IndexerConfig.McpAuthConfig.PermissionsConfig permissions = null;
+        JsonNode permNode = node.get("permissions");
+        if (permNode != null) {
+            List<String> openRepos = new ArrayList<>();
+            JsonNode overrides = permNode.get("overrides");
+            if (overrides != null) {
+                JsonNode openReposNode = overrides.get("openRepos");
+                if (openReposNode != null && openReposNode.isArray()) {
+                    openReposNode.forEach(n -> { if (n.isTextual()) openRepos.add(n.textValue()); });
+                }
+            }
+            permissions = new IndexerConfig.McpAuthConfig.PermissionsConfig(
+                    textOrNull(permNode, "type"),
+                    textOrNull(permNode, "serviceAccountToken"),
+                    textOrNull(permNode, "org"),
+                    openRepos
+            );
+        }
+
+        return new IndexerConfig.McpAuthConfig(keys, oauth, permissions);
     }
 
     private String textOrNull(JsonNode node, String field) {

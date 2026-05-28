@@ -77,11 +77,22 @@ public record IndexerConfig(
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record McpAuthConfig(List<ApiKeyEntry> apiKeys) {
+    public record McpAuthConfig(List<ApiKeyEntry> apiKeys, OAuthConfig oauth, PermissionsConfig permissions) {
         public McpAuthConfig {
             if (apiKeys == null) apiKeys = List.of();
         }
         public record ApiKeyEntry(String key, String id, String name) {}
+        public record OAuthConfig(String jwksUrl, String issuer, String audience, String groupsClaim) {
+            public OAuthConfig {
+                if (groupsClaim == null) groupsClaim = "groups";
+            }
+        }
+        public record PermissionsConfig(String type, String serviceAccountToken, String org, List<String> openRepos) {
+            public PermissionsConfig {
+                if (type == null) type = "none";
+                if (openRepos == null) openRepos = List.of();
+            }
+        }
     }
 
     public IndexerConfig {
@@ -91,6 +102,6 @@ public record IndexerConfig(
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
         if (branches == null) branches = new BranchConfig(true, 14, 24);
-        if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of());
+        if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of(), null, null);
     }
 }

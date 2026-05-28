@@ -2,6 +2,7 @@ package com.indexer.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indexer.auth.CallerIdentity;
+import com.indexer.auth.PermissionCache;
 import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.indexing.IndexingPipeline;
@@ -31,19 +32,26 @@ public class QueryExecutor {
     private final IndexingPipeline indexingPipeline;
     private final RepositoryDao repositoryDao;
     private final GitOperations gitOps;
+    private final PermissionCache permissionCache;
 
     // Backward-compatible constructor (used in tests)
     public QueryExecutor(Jdbi jdbi) {
-        this(jdbi, null, null, null, null);
+        this(jdbi, null, null, null, null, null);
     }
 
     public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
                          RepositoryDao repositoryDao, GitOperations gitOps) {
+        this(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, null);
+    }
+
+    public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
+                         RepositoryDao repositoryDao, GitOperations gitOps, PermissionCache permissionCache) {
         this.jdbi = jdbi;
         this.branchIndexDao = branchIndexDao;
         this.indexingPipeline = indexingPipeline;
         this.repositoryDao = repositoryDao;
         this.gitOps = gitOps;
+        this.permissionCache = permissionCache;
     }
 
     /**
@@ -54,6 +62,26 @@ public class QueryExecutor {
             CallerIdentity caller, String repo, String action,
             Map<String, Object> params, Supplier<Object> query) {
         log.info("Tool call: {} by {} ({})", action, caller.displayName(), caller.authMethod());
+
+        // Authorization check — only for OAuth users with configured permissions
+        if (permissionCache != null && repo != null && "oauth".equals(caller.authMethod())) {
+            try {
+                Set<String> allowed = permissionCache.getAllowedRepos(caller);
+                if (!allowed.contains(repo)) {
+                    log.warn("Access denied: {} attempted to query repo {}", caller.displayName(), repo);
+                    return McpSchema.CallToolResult.builder()
+                            .addTextContent("Access denied to repository: " + repo)
+                            .isError(true)
+                            .build();
+                }
+            } catch (Exception e) {
+                log.error("Permission resolution failed for {}: {}", caller.displayName(), e.getMessage());
+                return McpSchema.CallToolResult.builder()
+                        .addTextContent("Authorization failed: unable to verify permissions")
+                        .isError(true)
+                        .build();
+            }
+        }
 
         try {
             Object result = query.get();
