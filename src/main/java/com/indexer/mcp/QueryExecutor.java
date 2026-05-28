@@ -1,6 +1,9 @@
 package com.indexer.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indexer.audit.AuditEvent;
+import com.indexer.audit.AuditException;
+import com.indexer.audit.AuditSink;
 import com.indexer.auth.CallerIdentity;
 import com.indexer.auth.PermissionCache;
 import com.indexer.db.BranchIndexDao;
@@ -33,30 +36,41 @@ public class QueryExecutor {
     private final RepositoryDao repositoryDao;
     private final GitOperations gitOps;
     private final PermissionCache permissionCache;
+    private final AuditSink auditSink;
 
     // Backward-compatible constructor (used in tests)
     public QueryExecutor(Jdbi jdbi) {
-        this(jdbi, null, null, null, null, null);
+        this(jdbi, null, null, null, null, null, null);
     }
 
     public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
                          RepositoryDao repositoryDao, GitOperations gitOps) {
-        this(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, null);
+        this(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, null, null);
     }
 
     public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
                          RepositoryDao repositoryDao, GitOperations gitOps, PermissionCache permissionCache) {
+        this(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache, null);
+    }
+
+    public QueryExecutor(Jdbi jdbi, BranchIndexDao branchIndexDao, IndexingPipeline indexingPipeline,
+                         RepositoryDao repositoryDao, GitOperations gitOps, PermissionCache permissionCache,
+                         AuditSink auditSink) {
         this.jdbi = jdbi;
         this.branchIndexDao = branchIndexDao;
         this.indexingPipeline = indexingPipeline;
         this.repositoryDao = repositoryDao;
         this.gitOps = gitOps;
         this.permissionCache = permissionCache;
+        this.auditSink = auditSink;
     }
 
     /**
      * Pipeline wrapper that logs the caller, executes the query, and returns
      * a CallToolResult with JSON-serialized output or an error.
+     *
+     * Enforces "no audit, no access": if auditSink is configured and fails to
+     * record, the query result is discarded.
      */
     public McpSchema.CallToolResult executeQuery(
             CallerIdentity caller, String repo, String action,
@@ -67,6 +81,7 @@ public class QueryExecutor {
         if (permissionCache != null && "oauth".equals(caller.authMethod())) {
             if (repo == null) {
                 log.warn("Access denied: {} called {} without repo parameter", caller.displayName(), action);
+                auditBestEffort(caller, action, null, false, "denied", "Repository parameter required");
                 return McpSchema.CallToolResult.builder()
                         .addTextContent("Repository parameter is required for authenticated queries")
                         .isError(true)
@@ -76,6 +91,7 @@ public class QueryExecutor {
                 Set<String> allowed = permissionCache.getAllowedRepos(caller);
                 if (!allowed.contains(repo)) {
                     log.warn("Access denied: {} attempted to query repo {}", caller.displayName(), repo);
+                    auditBestEffort(caller, action, repo, false, "denied", "Access denied to repository: " + repo);
                     return McpSchema.CallToolResult.builder()
                             .addTextContent("Access denied to repository: " + repo)
                             .isError(true)
@@ -83,6 +99,7 @@ public class QueryExecutor {
                 }
             } catch (Exception e) {
                 log.error("Permission resolution failed for {}: {}", caller.displayName(), e.getMessage());
+                auditBestEffort(caller, action, repo, false, "denied", "Permission resolution failed");
                 return McpSchema.CallToolResult.builder()
                         .addTextContent("Authorization failed: unable to verify permissions")
                         .isError(true)
@@ -90,19 +107,64 @@ public class QueryExecutor {
             }
         }
 
+        // Execute query
+        Object result;
+        String resultStatus;
+        String errorMessage = null;
         try {
-            Object result = query.get();
+            result = query.get();
+            resultStatus = "success";
+        } catch (Exception e) {
+            log.error("Tool execution error in {}: {}", action, e.getMessage(), e);
+            result = null;
+            resultStatus = "error";
+            errorMessage = e.getMessage();
+        }
+
+        // Audit — "no audit, no access"
+        if (auditSink != null) {
+            try {
+                auditSink.record(AuditEvent.from(caller, action, repo, true, resultStatus, errorMessage));
+            } catch (AuditException e) {
+                log.error("Audit write failed for {}, discarding query result: {}", action, e.getMessage());
+                return McpSchema.CallToolResult.builder()
+                        .addTextContent("Audit recording failed — query result withheld")
+                        .isError(true)
+                        .build();
+            }
+        }
+
+        // Return result
+        if (result == null) {
+            return McpSchema.CallToolResult.builder()
+                    .addTextContent("Error: " + errorMessage)
+                    .isError(true)
+                    .build();
+        }
+
+        try {
             String json = OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(result);
             return McpSchema.CallToolResult.builder()
                     .addTextContent(json)
                     .isError(false)
                     .build();
         } catch (Exception e) {
-            log.error("Tool execution error in {}: {}", action, e.getMessage(), e);
+            log.error("Result serialization error in {}: {}", action, e.getMessage(), e);
             return McpSchema.CallToolResult.builder()
                     .addTextContent("Error: " + e.getMessage())
                     .isError(true)
                     .build();
+        }
+    }
+
+    /** Best-effort audit for denied queries — log warning if audit itself fails. */
+    private void auditBestEffort(CallerIdentity caller, String action, String repo,
+                                 boolean authorized, String resultStatus, String errorMessage) {
+        if (auditSink == null) return;
+        try {
+            auditSink.record(AuditEvent.from(caller, action, repo, authorized, resultStatus, errorMessage));
+        } catch (Exception e) {
+            log.warn("Audit write failed for denied query {}: {}", action, e.getMessage());
         }
     }
 

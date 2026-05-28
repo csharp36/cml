@@ -146,6 +146,9 @@ public class Application {
                 permissionCache = new PermissionCache(resolver, openRepos, Duration.ofMinutes(30));
             }
 
+            // 5e. Set up audit sink
+            var auditSink = new com.indexer.audit.PostgresAuditSink(jdbi);
+
             // 6. Build Streamable HTTP transport
             final JwtValidator finalJwtValidator = jwtValidator;
 
@@ -184,7 +187,7 @@ public class Application {
             httpServer = new HttpServer(eventDao, repositoryDao, streamableTransport);
 
             // Create admin API
-            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache);
+            var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache, auditSink);
             adminService = new AdminService(
                     repoManager, repositoryDao, fileDao, symbolDao,
                     eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
