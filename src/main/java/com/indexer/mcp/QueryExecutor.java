@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -817,6 +818,50 @@ public class QueryExecutor {
                 result.put("action", "Run 'git pull' to sync, or push your changes to trigger re-indexing.");
             }
             return (Map<String, Object>) result;
+        });
+    }
+
+    public List<Map<String, Object>> queryAuditLog(String callerHash, String action, String repo,
+                                                    String resultStatus, Instant since, Instant until, int limit) {
+        return jdbi.withHandle(handle -> {
+            var sb = new StringBuilder("SELECT ae.*, aim.user_id, aim.display_name ");
+            sb.append("FROM audit_events ae ");
+            sb.append("LEFT JOIN audit_identity_map aim ON ae.caller_hash = aim.caller_hash ");
+            sb.append("WHERE 1=1 ");
+
+            var params = new java.util.LinkedHashMap<String, Object>();
+
+            if (callerHash != null && !callerHash.isBlank()) {
+                sb.append("AND ae.caller_hash = :callerHash ");
+                params.put("callerHash", callerHash);
+            }
+            if (action != null && !action.isBlank()) {
+                sb.append("AND ae.action = :action ");
+                params.put("action", action);
+            }
+            if (repo != null && !repo.isBlank()) {
+                sb.append("AND ae.repo = :repo ");
+                params.put("repo", repo);
+            }
+            if (resultStatus != null && !resultStatus.isBlank()) {
+                sb.append("AND ae.result_status = :resultStatus ");
+                params.put("resultStatus", resultStatus);
+            }
+            if (since != null) {
+                sb.append("AND ae.timestamp >= :since ");
+                params.put("since", since);
+            }
+            if (until != null) {
+                sb.append("AND ae.timestamp <= :until ");
+                params.put("until", until);
+            }
+
+            sb.append("ORDER BY ae.timestamp DESC LIMIT :limit");
+            params.put("limit", Math.min(limit, 500));
+
+            var q = handle.createQuery(sb.toString());
+            params.forEach(q::bind);
+            return q.mapToMap().list();
         });
     }
 

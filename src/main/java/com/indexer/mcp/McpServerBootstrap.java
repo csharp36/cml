@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 11 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
+ * Registers all 12 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
  */
 public class McpServerBootstrap {
 
@@ -41,7 +41,7 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 11 tools registered");
+        log.info("MCP server started over stdio with 12 tools registered");
     }
 
     public void startHttp(McpStreamableServerTransportProvider httpTransport) {
@@ -58,8 +58,9 @@ public class McpServerBootstrap {
                 .toolCall(getDirectoryTreeTool(), this::handleGetDirectoryTree)
                 .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
                 .toolCall(checkSyncTool(), this::handleCheckSync)
+                .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .build();
-        log.info("MCP server started over Streamable HTTP with 11 tools registered");
+        log.info("MCP server started over Streamable HTTP with 12 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -76,6 +77,7 @@ public class McpServerBootstrap {
                 .toolCall(getDirectoryTreeTool(), this::handleGetDirectoryTree)
                 .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
                 .toolCall(checkSyncTool(), this::handleCheckSync)
+                .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .build();
     }
 
@@ -267,6 +269,23 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool queryAuditLogTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("caller_hash",   Map.of("type", "string", "description", "Filter by caller hash"));
+        props.put("action",        Map.of("type", "string", "description", "Filter by tool name or admin action"));
+        props.put("repo",          Map.of("type", "string", "description", "Filter by repository name"));
+        props.put("result_status", Map.of("type", "string", "description", "Filter: success, error, denied"));
+        props.put("since",         Map.of("type", "string", "description", "ISO 8601 timestamp lower bound"));
+        props.put("until",         Map.of("type", "string", "description", "ISO 8601 timestamp upper bound"));
+        props.put("limit",         Map.of("type", "integer", "description", "Max results (default 50, max 500)", "default", 50));
+        var schema = new McpSchema.JsonSchema("object", props, List.of(), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("query_audit_log")
+                .description("Query the audit log. Requires audit reader access (stdio or API key with auditReader: true).")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -416,6 +435,38 @@ public class McpServerBootstrap {
                 () -> queryExecutor.checkSync(
                         repo, stringArg(args, "local_sha"),
                         stringArg(args, "branch")));
+    }
+
+    private McpSchema.CallToolResult handleQueryAuditLog(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+
+        if (!caller.auditReader()) {
+            return McpSchema.CallToolResult.builder()
+                    .addTextContent("Access denied: audit reader permission required")
+                    .isError(true)
+                    .build();
+        }
+
+        java.time.Instant since = parseInstant(stringArg(args, "since"));
+        java.time.Instant until = parseInstant(stringArg(args, "until"));
+
+        return queryExecutor.executeQuery(caller, null, "query_audit_log", args,
+                () -> queryExecutor.queryAuditLog(
+                        stringArg(args, "caller_hash"), stringArg(args, "action"),
+                        stringArg(args, "repo"), stringArg(args, "result_status"),
+                        since, until, intArg(args, "limit", 50)));
+    }
+
+    private java.time.Instant parseInstant(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            return java.time.Instant.parse(s);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // -----------------------------------------------------------------------
