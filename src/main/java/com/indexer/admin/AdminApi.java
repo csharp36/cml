@@ -1,5 +1,8 @@
 package com.indexer.admin;
 
+import com.indexer.audit.AuditEvent;
+import com.indexer.audit.AuditSink;
+import com.indexer.auth.CallerIdentity;
 import com.indexer.config.IndexerConfig;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
@@ -16,10 +19,16 @@ public class AdminApi {
 
     private final AdminService adminService;
     private final String adminToken;
+    private final AuditSink auditSink;
 
     public AdminApi(AdminService adminService, String adminToken) {
+        this(adminService, adminToken, null);
+    }
+
+    public AdminApi(AdminService adminService, String adminToken, AuditSink auditSink) {
         this.adminService = adminService;
         this.adminToken = adminToken;
+        this.auditSink = auditSink;
     }
 
     public void registerRoutes(RoutesConfig routes) {
@@ -43,6 +52,7 @@ public class AdminApi {
 
         String authHeader = ctx.header("Authorization");
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            auditAdminBestEffort(ctx, "admin:authFailure", false, "denied", "Missing Authorization header");
             ctx.status(401).json(Map.of("error", "Missing or invalid Authorization header"));
             ctx.skipRemainingHandlers();
             return;
@@ -50,6 +60,7 @@ public class AdminApi {
 
         String providedToken = authHeader.substring("Bearer ".length());
         if (!constantTimeEquals(adminToken, providedToken)) {
+            auditAdminBestEffort(ctx, "admin:authFailure", false, "denied", "Invalid admin token");
             ctx.status(401).json(Map.of("error", "Invalid admin token"));
             ctx.skipRemainingHandlers();
             return;
@@ -83,8 +94,10 @@ public class AdminApi {
 
         try {
             var result = adminService.addRepository(body.url(), branch, authConfig);
+            auditAdminBestEffort(ctx, "admin:addRepo", true, "success", null);
             ctx.status(202).json(result);
         } catch (AdminService.ConflictException e) {
+            auditAdminBestEffort(ctx, "admin:addRepo", true, "error", e.getMessage());
             ctx.status(409).json(Map.of("error", e.getMessage()));
         }
     }
@@ -93,8 +106,10 @@ public class AdminApi {
         String name = ctx.pathParam("name");
         try {
             adminService.deleteRepository(name);
+            auditAdminBestEffort(ctx, "admin:deleteRepo", true, "success", null);
             ctx.json(Map.of("deleted", name));
         } catch (AdminService.NotFoundException e) {
+            auditAdminBestEffort(ctx, "admin:deleteRepo", true, "error", e.getMessage());
             ctx.status(404).json(Map.of("error", e.getMessage()));
         }
     }
@@ -103,8 +118,10 @@ public class AdminApi {
         String name = ctx.pathParam("name");
         try {
             var result = adminService.triggerReindex(name);
+            auditAdminBestEffort(ctx, "admin:reindex", true, "success", null);
             ctx.status(202).json(result);
         } catch (AdminService.NotFoundException e) {
+            auditAdminBestEffort(ctx, "admin:reindex", true, "error", e.getMessage());
             ctx.status(404).json(Map.of("error", e.getMessage()));
         }
     }
@@ -138,11 +155,26 @@ public class AdminApi {
         }
 
         try {
-            ctx.json(adminService.retryEvent(id));
+            var retryResult = adminService.retryEvent(id);
+            auditAdminBestEffort(ctx, "admin:retryEvent", true, "success", null);
+            ctx.json(retryResult);
         } catch (AdminService.NotFoundException e) {
+            auditAdminBestEffort(ctx, "admin:retryEvent", true, "error", e.getMessage());
             ctx.status(404).json(Map.of("error", e.getMessage()));
         } catch (AdminService.BadRequestException e) {
+            auditAdminBestEffort(ctx, "admin:retryEvent", true, "error", e.getMessage());
             ctx.status(400).json(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private void auditAdminBestEffort(Context ctx, String action,
+                                      boolean authorized, String resultStatus, String errorMessage) {
+        if (auditSink == null) return;
+        try {
+            var caller = CallerIdentity.fromAdminToken(ctx.ip());
+            auditSink.record(AuditEvent.from(caller, action, null, authorized, resultStatus, errorMessage));
+        } catch (Exception e) {
+            log.error("Audit write failed for admin action {}: {}", action, e.getMessage());
         }
     }
 

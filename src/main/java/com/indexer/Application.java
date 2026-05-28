@@ -192,7 +192,7 @@ public class Application {
                     repoManager, repositoryDao, fileDao, symbolDao,
                     eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
             String adminToken = config.admin() != null ? config.admin().token() : null;
-            var adminApi = new AdminApi(adminService, adminToken);
+            var adminApi = new AdminApi(adminService, adminToken, auditSink);
             httpServer.addRoutes(adminApi::registerRoutes);
 
             // 7. Initialize MCP servers before starting HTTP (transport must be ready before accepting connections)
