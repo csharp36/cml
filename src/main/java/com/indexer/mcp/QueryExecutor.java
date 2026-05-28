@@ -1074,6 +1074,97 @@ public class QueryExecutor {
         return val != null ? val : "";
     }
 
+    /**
+     * Search for symbols matching a pattern across multiple indexed branches.
+     * Returns results grouped by branch. Searches branch delta files only (not full overlay).
+     */
+    public Map<String, Object> searchBranches(String repo, String query, String kind,
+                                               String branchPattern, int maxBranches, int limit) {
+        String effectivePattern = (branchPattern != null && !branchPattern.isBlank()) ? branchPattern : ".*";
+        int effectiveMaxBranches = Math.min(Math.max(maxBranches, 1), 200);
+        int effectiveLimit = Math.min(Math.max(limit, 1), 100);
+
+        return jdbi.withHandle(handle -> {
+            var optRepo = handle.createQuery("SELECT id FROM repositories WHERE name = :name")
+                    .bind("name", repo)
+                    .mapTo(Integer.class)
+                    .findOne();
+            if (optRepo.isEmpty()) {
+                return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
+            }
+            int repoId = optRepo.get();
+
+            var matchingBranches = handle.createQuery("""
+                    SELECT branch FROM branch_index
+                    WHERE repo_id = :repoId AND branch ~ :pattern
+                    ORDER BY branch
+                    LIMIT :maxBranches
+                    """)
+                    .bind("repoId", repoId)
+                    .bind("pattern", effectivePattern)
+                    .bind("maxBranches", effectiveMaxBranches)
+                    .mapTo(String.class)
+                    .list();
+
+            int branchesSearched = matchingBranches.size() + 1; // +1 for main
+
+            var allBranches = new java.util.ArrayList<String>();
+            allBranches.add("main");
+            allBranches.addAll(matchingBranches);
+
+            // Build IN clause from server-controlled branch names
+            String branchList = allBranches.stream()
+                    .map(b -> "'" + b.replace("'", "''") + "'")
+                    .collect(java.util.stream.Collectors.joining(", "));
+
+            var sb = new StringBuilder(
+                    "SELECT f.branch, s.name, s.kind, s.signature, f.path AS file_path " +
+                    "FROM symbols s JOIN files f ON s.file_id = f.id " +
+                    "WHERE f.repo_id = :repoId AND s.name ~* :query " +
+                    "AND f.branch IN (" + branchList + ")");
+
+            if (kind != null && !kind.isBlank()) {
+                sb.append(" AND s.kind = :kind");
+            }
+            sb.append(" ORDER BY f.branch, s.name");
+
+            var q = handle.createQuery(sb.toString())
+                    .bind("repoId", repoId)
+                    .bind("query", query);
+            if (kind != null && !kind.isBlank()) {
+                q.bind("kind", kind);
+            }
+
+            var allResults = q.mapToMap().list();
+
+            // Group by branch, cap per-branch results
+            var grouped = new LinkedHashMap<String, java.util.List<Map<String, Object>>>();
+            for (var row : allResults) {
+                String branch = (String) row.get("branch");
+                grouped.computeIfAbsent(branch, k -> new java.util.ArrayList<>());
+                var branchResults = grouped.get(branch);
+                if (branchResults.size() < effectiveLimit) {
+                    branchResults.add(Map.of(
+                            "name", row.get("name"),
+                            "kind", row.get("kind"),
+                            "file_path", row.get("file_path"),
+                            "signature", nullSafeObj(row.get("signature"))
+                    ));
+                }
+            }
+
+            var results = new java.util.ArrayList<Map<String, Object>>();
+            for (var entry : grouped.entrySet()) {
+                results.add(Map.of("branch", entry.getKey(), "symbols", entry.getValue()));
+            }
+
+            return Map.<String, Object>of(
+                    "branches_searched", branchesSearched,
+                    "branches_matched", grouped.size(),
+                    "results", results);
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
