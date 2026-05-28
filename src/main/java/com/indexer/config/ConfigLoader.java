@@ -185,7 +185,8 @@ public class ConfigLoader {
                 String name = textOrNull(keyNode, "name");
                 if (key != null && id != null) {
                     boolean auditReader = keyNode.has("auditReader") && keyNode.get("auditReader").asBoolean(false);
-                    keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id, auditReader));
+                    boolean scipUpload = keyNode.has("scipUpload") && keyNode.get("scipUpload").asBoolean(false);
+                    keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id, auditReader, scipUpload));
                 }
             }
         }

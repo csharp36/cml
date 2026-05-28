@@ -86,4 +86,11 @@ class CallerIdentityTest {
         var identity = CallerIdentity.fromApiKey("dev", "Dev Team", "10.0.0.1");
         assertThat(identity.auditReader()).isFalse();
     }
+
+    @Test
+    void fromApiKeyWithScipUpload() {
+        var identity = CallerIdentity.fromApiKey("ci", "CI Pipeline", "10.0.0.1", false, true);
+        assertThat(identity.scipUpload()).isTrue();
+        assertThat(identity.auditReader()).isFalse();
+    }
 }

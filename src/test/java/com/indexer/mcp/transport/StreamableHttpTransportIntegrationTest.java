@@ -259,7 +259,7 @@ class StreamableHttpTransportIntegrationTest {
         var queryExecutor = new QueryExecutor(jdbi);
 
         var authenticator = new ApiKeyAuthenticator(List.of(
-                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User", false)
+                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User", false, false)
         ));
 
         var authTransport = HttpServletStreamableServerTransportProvider.builder()
@@ -345,7 +345,7 @@ class StreamableHttpTransportIntegrationTest {
         var queryExecutor = new QueryExecutor(jdbi);
 
         var authenticator = new ApiKeyAuthenticator(List.of(
-                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User", false)
+                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User", false, false)
         ));
 
         var authTransport = HttpServletStreamableServerTransportProvider.builder()
