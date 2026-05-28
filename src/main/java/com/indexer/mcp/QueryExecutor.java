@@ -680,12 +680,17 @@ public class QueryExecutor {
 
             // Per-repo stats
             var repos = handle.createQuery("""
-                    SELECT r.name AS repo_name, r.last_indexed_sha,
+                    SELECT r.name AS repo_name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at,
+                           CASE
+                               WHEN r.scip_sha IS NULL THEN 'unavailable'
+                               WHEN r.scip_sha = r.last_indexed_sha THEN 'fresh'
+                               ELSE 'stale'
+                           END AS scip_status,
                            COUNT(CASE WHEN ie.status = 'pending' THEN 1 END) AS pending_events,
                            COUNT(CASE WHEN ie.status = 'failed' THEN 1 END) AS failed_events
                     FROM repositories r
                     LEFT JOIN indexing_events ie ON ie.repo_name = r.name
-                    GROUP BY r.name, r.last_indexed_sha
+                    GROUP BY r.name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at
                     ORDER BY r.name
                     """)
                     .mapToMap()
