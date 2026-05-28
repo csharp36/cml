@@ -133,7 +133,7 @@ class StreamableHttpTransportIntegrationTest {
 
         JsonNode tools = toolsResult.get("result").get("tools");
         assertThat(tools.isArray()).isTrue();
-        assertThat(tools.size()).isEqualTo(12);
+        assertThat(tools.size()).isEqualTo(13);
 
         // Verify expected tool names
         List<String> toolNames = new java.util.ArrayList<>();
@@ -151,7 +151,8 @@ class StreamableHttpTransportIntegrationTest {
                 "get_directory_tree",
                 "get_index_health",
                 "check_sync",
-                "query_audit_log"
+                "query_audit_log",
+                "verify_audit_chain"
         );
     }
 

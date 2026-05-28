@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 12 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
+ * Registers all 13 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
  */
 public class McpServerBootstrap {
 
@@ -41,7 +41,7 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 12 tools registered");
+        log.info("MCP server started over stdio with 13 tools registered");
     }
 
     public void startHttp(McpStreamableServerTransportProvider httpTransport) {
@@ -59,8 +59,9 @@ public class McpServerBootstrap {
                 .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
                 .toolCall(checkSyncTool(), this::handleCheckSync)
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
+                .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .build();
-        log.info("MCP server started over Streamable HTTP with 12 tools registered");
+        log.info("MCP server started over Streamable HTTP with 13 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -78,6 +79,7 @@ public class McpServerBootstrap {
                 .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
                 .toolCall(checkSyncTool(), this::handleCheckSync)
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
+                .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .build();
     }
 
@@ -286,6 +288,17 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool verifyAuditChainTool() {
+        var schema = new McpSchema.JsonSchema("object",
+                Map.of("count", Map.of("type", "integer", "description", "Number of recent events to verify (default 100, max 1000)", "default", 100)),
+                List.of(), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("verify_audit_chain")
+                .description("Verify audit log hash chain integrity. Checks the last N events for tamper evidence.")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -458,6 +471,23 @@ public class McpServerBootstrap {
                         stringArg(args, "caller_hash"), stringArg(args, "action"),
                         stringArg(args, "repo"), stringArg(args, "result_status"),
                         since, until, intArg(args, "limit", 50)));
+    }
+
+    private McpSchema.CallToolResult handleVerifyAuditChain(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+
+        if (!caller.auditReader()) {
+            return McpSchema.CallToolResult.builder()
+                    .addTextContent("Access denied: audit reader permission required")
+                    .isError(true)
+                    .build();
+        }
+
+        return queryExecutor.executeQuery(caller, null, "verify_audit_chain", args,
+                () -> queryExecutor.verifyAuditChain(intArg(args, "count", 100)));
     }
 
     private java.time.Instant parseInstant(String s) {

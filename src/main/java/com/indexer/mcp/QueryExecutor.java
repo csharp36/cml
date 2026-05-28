@@ -865,6 +865,73 @@ public class QueryExecutor {
         });
     }
 
+    public Map<String, Object> verifyAuditChain(int count) {
+        int effectiveCount = Math.min(Math.max(count, 1), 1000);
+        return jdbi.withHandle(handle -> {
+            var events = handle.createQuery("""
+                    SELECT id, caller_hash, action, repo, result_status,
+                           EXTRACT(EPOCH FROM timestamp) * 1000 AS timestamp_millis,
+                           chain_hash
+                    FROM audit_events ORDER BY id DESC LIMIT :count
+                    """)
+                    .bind("count", effectiveCount)
+                    .mapToMap()
+                    .list();
+
+            if (events.isEmpty()) {
+                return Map.<String, Object>of(
+                        "checked", 0, "intact", true, "message", "No audit events found");
+            }
+
+            // Reverse to process oldest first
+            var sorted = new java.util.ArrayList<>(events);
+            java.util.Collections.reverse(sorted);
+
+            // Get the hash before the first event in our window
+            long firstId = ((Number) sorted.get(0).get("id")).longValue();
+            String prevHash;
+            if (firstId == 1) {
+                prevHash = "aeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e"; // genesis
+            } else {
+                prevHash = handle.createQuery(
+                        "SELECT chain_hash FROM audit_events WHERE id = :id")
+                        .bind("id", firstId - 1)
+                        .mapTo(String.class)
+                        .findOne()
+                        .orElse("aeebad4a796fcc2e15dc4c6061b45ed9b373f26adfc798ca7d2d8cc58182718e");
+            }
+
+            for (int i = 0; i < sorted.size(); i++) {
+                var event = sorted.get(i);
+                String callerHash = (String) event.get("caller_hash");
+                String action = (String) event.get("action");
+                String repo = event.get("repo") != null ? (String) event.get("repo") : "null";
+                String resultStatus = (String) event.get("result_status");
+                long timestampMillis = ((Number) event.get("timestamp_millis")).longValue();
+                String storedHash = (String) event.get("chain_hash");
+
+                String chainInput = prevHash + "|" + callerHash + "|" + action
+                        + "|" + repo + "|" + resultStatus + "|" + timestampMillis;
+                String computedHash = com.indexer.audit.AuditEvent.sha256(chainInput);
+
+                if (!computedHash.equals(storedHash)) {
+                    long eventId = ((Number) event.get("id")).longValue();
+                    return Map.<String, Object>of(
+                            "checked", i + 1,
+                            "intact", false,
+                            "break_at_event_id", eventId,
+                            "break_at_position", i + 1,
+                            "message", "Chain break detected at event " + eventId);
+                }
+                prevHash = storedHash;
+            }
+
+            return Map.<String, Object>of(
+                    "checked", sorted.size(), "intact", true,
+                    "message", "Chain intact for " + sorted.size() + " events");
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
