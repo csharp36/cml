@@ -12,6 +12,10 @@ public record CallerIdentity(
         String clientVersion,
         List<String> groups
 ) {
+    public CallerIdentity {
+        groups = groups != null ? List.copyOf(groups) : List.of();
+    }
+
     public static final String CONTEXT_KEY = "callerIdentity";
 
     public static CallerIdentity anonymous(String transport) {
@@ -28,7 +32,6 @@ public record CallerIdentity(
     }
 
     public static CallerIdentity fromOAuth(String sub, String name, List<String> groups, String sourceIp) {
-        return new CallerIdentity(sub, name, "oauth", "streamable-http", sourceIp, null, null,
-                groups != null ? List.copyOf(groups) : List.of());
+        return new CallerIdentity(sub, name, "oauth", "streamable-http", sourceIp, null, null, groups);
     }
 }
