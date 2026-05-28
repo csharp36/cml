@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 13 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
+ * Registers all 17 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
  */
 public class McpServerBootstrap {
 
@@ -41,7 +41,7 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 15 tools registered");
+        log.info("MCP server started over stdio with 17 tools registered");
     }
 
     public void startHttp(McpStreamableServerTransportProvider httpTransport) {
@@ -63,8 +63,9 @@ public class McpServerBootstrap {
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .toolCall(searchBranchesTool(), this::handleSearchBranches)
                 .toolCall(getTypeHierarchyTool(), this::handleGetTypeHierarchy)
+                .toolCall(getSymbolReferencesTool(), this::handleGetSymbolReferences)
                 .build();
-        log.info("MCP server started over Streamable HTTP with 15 tools registered");
+        log.info("MCP server started over Streamable HTTP with 17 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -86,6 +87,7 @@ public class McpServerBootstrap {
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .toolCall(searchBranchesTool(), this::handleSearchBranches)
                 .toolCall(getTypeHierarchyTool(), this::handleGetTypeHierarchy)
+                .toolCall(getSymbolReferencesTool(), this::handleGetSymbolReferences)
                 .build();
     }
 
@@ -355,6 +357,23 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool getSymbolReferencesTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("repo",              Map.of("type", "string", "description", "Repository name"));
+        props.put("symbol_name",       Map.of("type", "string", "description", "Display name of the symbol to look up"));
+        props.put("file_path",         Map.of("type", "string", "description", "File path to disambiguate when multiple symbols share a name"));
+        props.put("relationship_kind", Map.of("type", "string", "description", "Filter by relationship: implements, extends, references, or all (default: all)"));
+        props.put("direction",         Map.of("type", "string", "description", "inbound (who references this), outbound (what this references), or both (default: inbound)"));
+        props.put("limit",             Map.of("type", "integer", "description", "Max results (default: 50)", "default", 50));
+        var schema = new McpSchema.JsonSchema("object", props,
+                List.of("repo", "symbol_name"), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("get_symbol_references")
+                .description("Find symbols related to a given symbol through SCIP semantic relationships (implements, extends, references). Returns a flat list of direct edges. Requires SCIP data to be uploaded for the repo.")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -583,6 +602,19 @@ public class McpServerBootstrap {
                         repo, stringArg(args, "symbol_name"),
                         stringArg(args, "file_path"), stringArg(args, "kind"),
                         stringArg(args, "direction"), intArg(args, "depth", 3)));
+    }
+
+    private McpSchema.CallToolResult handleGetSymbolReferences(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "get_symbol_references", args,
+                () -> queryExecutor.getSymbolReferences(
+                        repo, stringArg(args, "symbol_name"),
+                        stringArg(args, "file_path"), stringArg(args, "relationship_kind"),
+                        stringArg(args, "direction"), intArg(args, "limit", 50)));
     }
 
     private java.time.Instant parseInstant(String s) {
