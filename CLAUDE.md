@@ -25,7 +25,7 @@ Claude Code <--MCP/stdio|HTTP--> MCP Server
                    (pluggable)
 ```
 
-- **MCP Server:** Exposes 11 tools (9 query + 1 health + 1 sync check). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
+- **MCP Server:** Exposes 13 tools (11 query + 1 health + 1 sync check). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
 - **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port (`/webhook`). Inserts events into PostgreSQL queue.
 - **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
 - **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
@@ -298,8 +298,10 @@ Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get 
 | `get_directory_tree` | Directory tree | Nested structure with types |
 | `get_index_health` | System health check | Per-repo status, errors, queue state, SCIP staleness |
 | `check_sync` | Compare local HEAD SHA with indexed SHA | Sync status, recommended action |
+| `get_type_hierarchy` | Type hierarchy from SCIP data | Supertypes, subtypes (recursive tree) |
+| `get_symbol_references` | Symbol relationships from SCIP data | Flat list of related symbols |
 
-All tools except `get_index_health` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay.
+All tools except `get_index_health`, `get_type_hierarchy`, and `get_symbol_references` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay.
 
 ## Branch Support
 
