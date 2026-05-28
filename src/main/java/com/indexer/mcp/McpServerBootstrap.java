@@ -1,12 +1,14 @@
 package com.indexer.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.indexer.mcp.transport.JavalinSseServerTransportProvider;
+import io.modelcontextprotocol.json.McpJsonDefaults;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpSyncServer;
+import io.modelcontextprotocol.server.McpSyncServerExchange;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpServerTransportProvider;
+import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Registers all 11 MCP tools with the MCP Java SDK and starts the server over stdio or SSE.
+ * Registers all 11 MCP tools with the MCP Java SDK and starts the server over stdio or Streamable HTTP.
  */
 public class McpServerBootstrap {
 
@@ -24,7 +26,7 @@ public class McpServerBootstrap {
 
     private final QueryExecutor queryExecutor;
     private McpSyncServer stdioServer;
-    private McpSyncServer sseServer;
+    private McpSyncServer httpServer;
 
     // Backward-compatible constructor (used in tests)
     public McpServerBootstrap(Jdbi jdbi) {
@@ -36,40 +38,49 @@ public class McpServerBootstrap {
     }
 
     public void startStdio() {
-        var transport = new StdioServerTransportProvider(new ObjectMapper());
+        var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
         log.info("MCP server started over stdio with 11 tools registered");
     }
 
-    public void startSse(JavalinSseServerTransportProvider sseTransport) {
-        sseServer = buildServer(sseTransport);
-        log.info("MCP server started over SSE with 11 tools registered");
+    public void startHttp(McpStreamableServerTransportProvider httpTransport) {
+        httpServer = McpServer.sync(httpTransport)
+                .serverInfo("source-code-indexer", "1.0.0")
+                .toolCall(searchSymbolsTool(), this::handleSearchSymbols)
+                .toolCall(getSymbolDetailTool(), this::handleGetSymbolDetail)
+                .toolCall(findImplementationsTool(), this::handleFindImplementations)
+                .toolCall(findReferencesTool(), this::handleFindReferences)
+                .toolCall(searchCodeTool(), this::handleSearchCode)
+                .toolCall(searchFilesTool(), this::handleSearchFiles)
+                .toolCall(getRepoSummaryTool(), this::handleGetRepoSummary)
+                .toolCall(getFileSummaryTool(), this::handleGetFileSummary)
+                .toolCall(getDirectoryTreeTool(), this::handleGetDirectoryTree)
+                .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
+                .toolCall(checkSyncTool(), this::handleCheckSync)
+                .build();
+        log.info("MCP server started over Streamable HTTP with 11 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
         return McpServer.sync(transport)
                 .serverInfo("source-code-indexer", "1.0.0")
-                .tool(searchSymbolsTool(), this::handleSearchSymbols)
-                .tool(getSymbolDetailTool(), this::handleGetSymbolDetail)
-                .tool(findImplementationsTool(), this::handleFindImplementations)
-                .tool(findReferencesTool(), this::handleFindReferences)
-                .tool(searchCodeTool(), this::handleSearchCode)
-                .tool(searchFilesTool(), this::handleSearchFiles)
-                .tool(getRepoSummaryTool(), this::handleGetRepoSummary)
-                .tool(getFileSummaryTool(), this::handleGetFileSummary)
-                .tool(getDirectoryTreeTool(), this::handleGetDirectoryTree)
-                .tool(getIndexHealthTool(), this::handleGetIndexHealth)
-                .tool(checkSyncTool(), this::handleCheckSync)
+                .toolCall(searchSymbolsTool(), this::handleSearchSymbols)
+                .toolCall(getSymbolDetailTool(), this::handleGetSymbolDetail)
+                .toolCall(findImplementationsTool(), this::handleFindImplementations)
+                .toolCall(findReferencesTool(), this::handleFindReferences)
+                .toolCall(searchCodeTool(), this::handleSearchCode)
+                .toolCall(searchFilesTool(), this::handleSearchFiles)
+                .toolCall(getRepoSummaryTool(), this::handleGetRepoSummary)
+                .toolCall(getFileSummaryTool(), this::handleGetFileSummary)
+                .toolCall(getDirectoryTreeTool(), this::handleGetDirectoryTree)
+                .toolCall(getIndexHealthTool(), this::handleGetIndexHealth)
+                .toolCall(checkSyncTool(), this::handleCheckSync)
                 .build();
     }
 
     public void stop() {
-        if (sseServer != null) {
-            sseServer.closeGracefully();
-        }
-        if (stdioServer != null) {
-            stdioServer.closeGracefully();
-        }
+        if (httpServer != null) httpServer.closeGracefully();
+        if (stdioServer != null) stdioServer.closeGracefully();
     }
 
     // -----------------------------------------------------------------------
@@ -88,9 +99,11 @@ public class McpServerBootstrap {
                 ),
                 List.of(),
                 false, null, null);
-        return new McpSchema.Tool("search_symbols",
-                "Search for symbols (classes, methods, functions) by name pattern, kind, language, or repo.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("search_symbols")
+                .description("Search for symbols (classes, methods, functions) by name pattern, kind, language, or repo.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool getSymbolDetailTool() {
@@ -104,9 +117,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("repo", "file_path", "symbol_name"),
                 false, null, null);
-        return new McpSchema.Tool("get_symbol_detail",
-                "Get detailed information about a specific symbol including source code, children, and type relationships.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("get_symbol_detail")
+                .description("Get detailed information about a specific symbol including source code, children, and type relationships.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool findImplementationsTool() {
@@ -118,9 +133,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("type_name"),
                 false, null, null);
-        return new McpSchema.Tool("find_implementations",
-                "Find all classes that implement a given interface or extend a given class.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("find_implementations")
+                .description("Find all classes that implement a given interface or extend a given class.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool findReferencesTool() {
@@ -133,9 +150,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("symbol_name"),
                 false, null, null);
-        return new McpSchema.Tool("find_references",
-                "Find files that import or reference a given symbol name.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("find_references")
+                .description("Find files that import or reference a given symbol name.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool searchCodeTool() {
@@ -149,9 +168,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("query"),
                 false, null, null);
-        return new McpSchema.Tool("search_code",
-                "Full-text search across indexed file contents using PostgreSQL full-text search.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("search_code")
+                .description("Full-text search across indexed file contents using PostgreSQL full-text search.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool searchFilesTool() {
@@ -165,9 +186,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("pattern"),
                 false, null, null);
-        return new McpSchema.Tool("search_files",
-                "Search for files by path pattern (glob-style * wildcard).",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("search_files")
+                .description("Search for files by path pattern (glob-style * wildcard).")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool getRepoSummaryTool() {
@@ -178,9 +201,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("repo_name"),
                 false, null, null);
-        return new McpSchema.Tool("get_repo_summary",
-                "Get a high-level summary of a repository including file count, language breakdown, and top directories.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("get_repo_summary")
+                .description("Get a high-level summary of a repository including file count, language breakdown, and top directories.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool getFileSummaryTool() {
@@ -192,9 +217,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("repo_name", "file_path"),
                 false, null, null);
-        return new McpSchema.Tool("get_file_summary",
-                "Get a summary of a specific file including its symbols and imports.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("get_file_summary")
+                .description("Get a summary of a specific file including its symbols and imports.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool getDirectoryTreeTool() {
@@ -207,9 +234,11 @@ public class McpServerBootstrap {
                 ),
                 List.of("repo_name"),
                 false, null, null);
-        return new McpSchema.Tool("get_directory_tree",
-                "Get a flat list of files under a directory path in a repository.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("get_directory_tree")
+                .description("Get a flat list of files under a directory path in a repository.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool getIndexHealthTool() {
@@ -217,9 +246,11 @@ public class McpServerBootstrap {
                 Map.of(),
                 List.of(),
                 false, null, null);
-        return new McpSchema.Tool("get_index_health",
-                "Get the health status of the indexer including per-repo stats, pending/failed event counts, and recent failures.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("get_index_health")
+                .description("Get the health status of the indexer including per-repo stats, pending/failed event counts, and recent failures.")
+                .inputSchema(schema)
+                .build();
     }
 
     private McpSchema.Tool checkSyncTool() {
@@ -228,9 +259,11 @@ public class McpServerBootstrap {
         props.put("local_sha",  Map.of("type", "string", "description", "Your local HEAD SHA from 'git rev-parse HEAD'"));
         props.put("branch",     Map.of("type", "string", "description", "Branch name (defaults to repo's configured branch, usually 'main')"));
         var schema = new McpSchema.JsonSchema("object", props, List.of("repo_name", "local_sha"), false, null, null);
-        return new McpSchema.Tool("check_sync",
-                "Check whether a local repository is in sync with the indexed version. Pass the repo name and your local HEAD SHA (from 'git rev-parse HEAD'). Returns sync status and recommended action if out of sync.",
-                schema);
+        return McpSchema.Tool.builder()
+                .name("check_sync")
+                .description("Check whether a local repository is in sync with the indexed version. Pass the repo name and your local HEAD SHA (from 'git rev-parse HEAD'). Returns sync status and recommended action if out of sync.")
+                .inputSchema(schema)
+                .build();
     }
 
     // -----------------------------------------------------------------------
@@ -238,9 +271,10 @@ public class McpServerBootstrap {
     // -----------------------------------------------------------------------
 
     private McpSchema.CallToolResult handleSearchSymbols(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String query    = stringArg(args, "query");
             String kind     = stringArg(args, "kind");
             String language = stringArg(args, "language");
@@ -256,9 +290,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleGetSymbolDetail(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String repo       = stringArg(args, "repo");
             String filePath   = stringArg(args, "file_path");
             String symbolName = stringArg(args, "symbol_name");
@@ -273,9 +308,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleFindImplementations(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String typeName = stringArg(args, "type_name");
             String repo     = stringArg(args, "repo");
             String branch   = stringArg(args, "branch");
@@ -288,9 +324,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleFindReferences(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String symbolName = stringArg(args, "symbol_name");
             String repo       = stringArg(args, "repo");
             String branch     = stringArg(args, "branch");
@@ -304,9 +341,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleSearchCode(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String query    = stringArg(args, "query");
             String language = stringArg(args, "language");
             String repo     = stringArg(args, "repo");
@@ -321,9 +359,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleSearchFiles(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String pattern  = stringArg(args, "pattern");
             String language = stringArg(args, "language");
             String repo     = stringArg(args, "repo");
@@ -338,9 +377,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleGetRepoSummary(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String repoName = stringArg(args, "repo_name");
             String branch   = stringArg(args, "branch");
             var result = queryExecutor.getRepoSummary(repoName, branch);
@@ -351,9 +391,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleGetFileSummary(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String repoName = stringArg(args, "repo_name");
             String filePath = stringArg(args, "file_path");
             String branch   = stringArg(args, "branch");
@@ -365,9 +406,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleGetDirectoryTree(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String repoName = stringArg(args, "repo_name");
             String path     = stringArg(args, "path");
             int depth       = intArg(args, "depth", 3);
@@ -381,8 +423,8 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleGetIndexHealth(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
             var result = queryExecutor.getIndexHealth();
             return jsonResult(result);
@@ -392,9 +434,10 @@ public class McpServerBootstrap {
     }
 
     private McpSchema.CallToolResult handleCheckSync(
-            io.modelcontextprotocol.server.McpSyncServerExchange exchange,
-            Map<String, Object> args) {
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
         try {
+            var args = request.arguments();
             String repoName = stringArg(args, "repo_name");
             String localSha = stringArg(args, "local_sha");
             String branch   = stringArg(args, "branch");

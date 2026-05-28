@@ -14,8 +14,7 @@ import com.indexer.indexing.SymbolExtractor;
 import com.indexer.indexing.treesitter.TSParserPool;
 import com.indexer.indexing.treesitter.TreeSitterEngine;
 import com.indexer.mcp.McpServerBootstrap;
-import com.indexer.mcp.transport.JavalinSseServerTransportProvider;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import com.indexer.queue.EventQueuePoller;
 import com.indexer.repository.GitOperations;
 import com.indexer.repository.RepositoryManager;
@@ -106,10 +105,12 @@ public class Application {
                 log.warn("{} events failed in previous runs. Use get_index_health for details.", failedCount);
             }
 
-            // 6. Create HTTP server with SSE transport
-            httpServer = new HttpServer(eventDao, repositoryDao);
-            var sseTransport = new JavalinSseServerTransportProvider(new ObjectMapper());
-            sseTransport.registerRoutes(httpServer.getApp());
+            // 6. Build Streamable HTTP transport
+            var streamableTransport = HttpServletStreamableServerTransportProvider.builder()
+                    .mcpEndpoint("/mcp")
+                    .build();
+
+            httpServer = new HttpServer(eventDao, repositoryDao, streamableTransport);
 
             // Create admin API
             var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps);
@@ -118,7 +119,7 @@ public class Application {
                     eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
             String adminToken = config.admin() != null ? config.admin().token() : null;
             var adminApi = new AdminApi(adminService, adminToken);
-            adminApi.registerRoutes(httpServer.getApp());
+            httpServer.addRoutes(adminApi::registerRoutes);
 
             httpServer.start(config.server().httpPort());
 
@@ -168,7 +169,7 @@ public class Application {
             // 8. Start MCP servers (both transports)
             mcpServer = new McpServerBootstrap(queryExecutor);
             mcpServer.startStdio();
-            mcpServer.startSse(sseTransport);
+            mcpServer.startHttp(streamableTransport);
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

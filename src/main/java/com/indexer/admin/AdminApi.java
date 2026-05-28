@@ -1,7 +1,7 @@
 package com.indexer.admin;
 
 import com.indexer.config.IndexerConfig;
-import io.javalin.Javalin;
+import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,16 +22,16 @@ public class AdminApi {
         this.adminToken = adminToken;
     }
 
-    public void registerRoutes(Javalin app) {
-        app.before("/admin/*", this::authenticate);
+    public void registerRoutes(RoutesConfig routes) {
+        routes.before("/admin/*", this::authenticate);
 
-        app.get("/admin/health", this::getHealth);
-        app.get("/admin/repos", this::listRepos);
-        app.post("/admin/repos", this::addRepo);
-        app.delete("/admin/repos/{name}", this::deleteRepo);
-        app.post("/admin/repos/{name}/reindex", this::reindexRepo);
-        app.get("/admin/events", this::listEvents);
-        app.post("/admin/events/{id}/retry", this::retryEvent);
+        routes.get("/admin/health", this::getHealth);
+        routes.get("/admin/repos", this::listRepos);
+        routes.post("/admin/repos", this::addRepo);
+        routes.delete("/admin/repos/{name}", this::deleteRepo);
+        routes.post("/admin/repos/{name}/reindex", this::reindexRepo);
+        routes.get("/admin/events", this::listEvents);
+        routes.post("/admin/events/{id}/retry", this::retryEvent);
     }
 
     private void authenticate(Context ctx) {

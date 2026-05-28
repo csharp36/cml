@@ -18,10 +18,11 @@ repositories {
 
 dependencies {
     // MCP SDK
-    implementation("io.modelcontextprotocol.sdk:mcp:0.10.0")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:1.1.2")
+    implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:1.1.2")
 
     // HTTP server
-    implementation("io.javalin:javalin:6.4.0")
+    implementation("io.javalin:javalin:7.2.2")
 
     // Database
     implementation("org.postgresql:postgresql:42.7.4")
@@ -56,7 +57,7 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers:1.21.4")
     testImplementation("org.testcontainers:postgresql:1.21.4")
     testImplementation("org.testcontainers:junit-jupiter:1.21.4")
-    testImplementation("io.javalin:javalin-testtools:6.4.0")
+    testImplementation("io.javalin:javalin-testtools:7.2.2")
     testImplementation("org.assertj:assertj-core:3.26.3")
 }
 

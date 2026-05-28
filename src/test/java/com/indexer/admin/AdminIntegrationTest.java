@@ -1,22 +1,21 @@
 package com.indexer.admin;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indexer.db.*;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.mcp.QueryExecutor;
 import com.indexer.repository.GitOperations;
 import com.indexer.repository.RepositoryManager;
 import com.indexer.server.HttpServer;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
 import org.junit.jupiter.api.*;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.net.ServerSocket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -30,12 +29,11 @@ class AdminIntegrationTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
             .withDatabaseName("test_index").withUsername("test").withPassword("test");
 
-    private static final MediaType JSON = MediaType.get("application/json");
     private static final String TOKEN = "integration-test-token";
 
     private HttpServer httpServer;
     private AdminService adminService;
-    private OkHttpClient client;
+    private HttpClient client;
     private int port;
     private String baseUrl;
 
@@ -74,12 +72,12 @@ class AdminIntegrationTest {
             port = ss.getLocalPort();
         }
 
-        httpServer = new HttpServer(eventDao, repositoryDao);
+        httpServer = new HttpServer(eventDao, repositoryDao, null);
         var adminApi = new AdminApi(adminService, TOKEN);
-        adminApi.registerRoutes(httpServer.getApp());
+        httpServer.addRoutes(adminApi::registerRoutes);
         httpServer.start(port);
 
-        client = new OkHttpClient();
+        client = HttpClient.newHttpClient();
         baseUrl = "http://localhost:" + port;
     }
 
@@ -91,67 +89,72 @@ class AdminIntegrationTest {
 
     @Test
     void healthEndpointReturnsData() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/health")
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/health"))
                 .header("Authorization", "Bearer " + TOKEN)
-                .build()).execute();
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(200);
-        var body = response.body().string();
+        assertThat(response.statusCode()).isEqualTo(200);
+        var body = response.body();
         assertThat(body).contains("repositories");
         assertThat(body).contains("totalPendingEvents");
     }
 
     @Test
     void reposEndpointReturnsEmptyList() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/repos")
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/repos"))
                 .header("Authorization", "Bearer " + TOKEN)
-                .build()).execute();
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(200);
-        assertThat(response.body().string()).isEqualTo("[]");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("[]");
     }
 
     @Test
     void eventsEndpointWithFilters() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/events?status=failed&limit=10")
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/events?status=failed&limit=10"))
                 .header("Authorization", "Bearer " + TOKEN)
-                .build()).execute();
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(200);
-        assertThat(response.body().string()).isEqualTo("[]");
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEqualTo("[]");
     }
 
     @Test
     void retryNonexistentEventReturns404() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/events/99999/retry")
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/events/99999/retry"))
                 .header("Authorization", "Bearer " + TOKEN)
-                .post(RequestBody.create("", JSON))
-                .build()).execute();
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(""))
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(404);
+        assertThat(response.statusCode()).isEqualTo(404);
     }
 
     @Test
     void deleteNonexistentRepoReturns404() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/repos/nonexistent")
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/repos/nonexistent"))
                 .header("Authorization", "Bearer " + TOKEN)
-                .delete()
-                .build()).execute();
+                .DELETE()
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(404);
+        assertThat(response.statusCode()).isEqualTo(404);
     }
 
     @Test
     void authBlocksUnauthenticatedRequests() throws Exception {
-        var response = client.newCall(new Request.Builder()
-                .url(baseUrl + "/admin/health")
-                .build()).execute();
+        var response = client.send(HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/admin/health"))
+                .GET()
+                .build(), HttpResponse.BodyHandlers.ofString());
 
-        assertThat(response.code()).isEqualTo(401);
+        assertThat(response.statusCode()).isEqualTo(401);
     }
 }

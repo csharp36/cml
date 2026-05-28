@@ -2,11 +2,10 @@ package com.indexer.admin;
 
 import io.javalin.Javalin;
 import io.javalin.testtools.JavalinTest;
-import okhttp3.MediaType;
-import okhttp3.RequestBody;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpRequest;
 import java.util.List;
 import java.util.Map;
 
@@ -15,7 +14,6 @@ import static org.mockito.Mockito.*;
 
 class AdminApiTest {
 
-    private static final MediaType JSON = MediaType.get("application/json");
     private static final String TOKEN = "test-secret-token";
     private AdminService adminService;
     private Javalin app;
@@ -24,8 +22,9 @@ class AdminApiTest {
     void setUp() {
         adminService = mock(AdminService.class);
         var adminApi = new AdminApi(adminService, TOKEN);
-        app = Javalin.create();
-        adminApi.registerRoutes(app);
+        app = Javalin.create(config -> {
+            adminApi.registerRoutes(config.routes);
+        });
     }
 
     @Test
@@ -59,8 +58,9 @@ class AdminApiTest {
     @Test
     void returns503WhenNoTokenConfigured() {
         var adminApi = new AdminApi(adminService, null);
-        var noAuthApp = Javalin.create();
-        adminApi.registerRoutes(noAuthApp);
+        var noAuthApp = Javalin.create(config -> {
+            adminApi.registerRoutes(config.routes);
+        });
 
         JavalinTest.test(noAuthApp, (server, client) -> {
             var response = client.get("/admin/health");
@@ -100,9 +100,10 @@ class AdminApiTest {
         JavalinTest.test(app, (server, client) -> {
             var response = client.request("/admin/repos", builder ->
                     builder.header("Authorization", "Bearer " + TOKEN)
-                            .post(RequestBody.create("""
+                            .header("Content-Type", "application/json")
+                            .post(HttpRequest.BodyPublishers.ofString("""
                                     {"url":"git@github.com:org/repo.git","branch":"main","auth":{"type":"ssh-key"}}
-                                    """, JSON)));
+                                    """)));
             assertThat(response.code()).isEqualTo(202);
         });
     }
@@ -113,7 +114,8 @@ class AdminApiTest {
 
         JavalinTest.test(app, (server, client) -> {
             var response = client.request("/admin/repos/my-repo", builder ->
-                    builder.header("Authorization", "Bearer " + TOKEN).delete());
+                    builder.header("Authorization", "Bearer " + TOKEN)
+                            .delete(HttpRequest.BodyPublishers.noBody()));
             assertThat(response.code()).isEqualTo(200);
         });
     }
@@ -125,7 +127,8 @@ class AdminApiTest {
 
         JavalinTest.test(app, (server, client) -> {
             var response = client.request("/admin/repos/unknown", builder ->
-                    builder.header("Authorization", "Bearer " + TOKEN).delete());
+                    builder.header("Authorization", "Bearer " + TOKEN)
+                            .delete(HttpRequest.BodyPublishers.noBody()));
             assertThat(response.code()).isEqualTo(404);
         });
     }
@@ -137,7 +140,8 @@ class AdminApiTest {
         JavalinTest.test(app, (server, client) -> {
             var response = client.request("/admin/events/42/retry", builder ->
                     builder.header("Authorization", "Bearer " + TOKEN)
-                            .post(RequestBody.create("", JSON)));
+                            .header("Content-Type", "application/json")
+                            .post(HttpRequest.BodyPublishers.ofString("")));
             assertThat(response.code()).isEqualTo(200);
         });
     }

@@ -7,8 +7,6 @@ import com.indexer.mcp.QueryExecutor;
 import com.indexer.repository.GitOperations;
 import com.indexer.server.HttpServer;
 import io.javalin.testtools.JavalinTest;
-import okhttp3.MediaType;
-import okhttp3.RequestBody;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -17,6 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.net.http.HttpRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -121,16 +120,16 @@ class IntegrationSmokeTest {
         assertThat(((Number) health.get("totalPendingEvents")).intValue()).isEqualTo(0);
 
         // Verify: webhook POST inserts a pending event in DB
-        var httpServer = new HttpServer(eventDao, repositoryDao);
+        var httpServer = new HttpServer(eventDao, repositoryDao, null);
         var app = httpServer.createApp();
         JavalinTest.test(app, (server, client) -> {
-            var requestBody = RequestBody.create(
-                    """
+            var response = client.request("/webhook", builder ->
+                    builder.header("Content-Type", "application/json")
+                            .post(HttpRequest.BodyPublishers.ofString(
+                                    """
                     {"repoName":"smoke-repo","repoPath":"%s","eventType":"post-commit","previousSha":"abc","currentSha":"def","timestamp":"2026-05-25T12:00:00Z"}
-                    """.formatted(repoDir),
-                    MediaType.get("application/json")
-            );
-            var response = client.request("/webhook", builder -> builder.post(requestBody));
+                    """.formatted(repoDir)
+                            )));
             assertThat(response.code()).isEqualTo(202);
             assertThat(eventDao.countByStatus("pending")).isEqualTo(1);
         });
