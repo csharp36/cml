@@ -57,4 +57,33 @@ class CallerIdentityTest {
         assertThat(CallerIdentity.anonymous("http").groups()).isEmpty();
         assertThat(CallerIdentity.fromApiKey("id", "name", "ip").groups()).isEmpty();
     }
+
+    @Test
+    void fromAdminTokenCreatesAdminIdentity() {
+        var identity = CallerIdentity.fromAdminToken("10.0.0.1");
+        assertThat(identity.userId()).isEqualTo("admin");
+        assertThat(identity.displayName()).isEqualTo("Admin");
+        assertThat(identity.authMethod()).isEqualTo("admin-token");
+        assertThat(identity.transport()).isEqualTo("streamable-http");
+        assertThat(identity.sourceIp()).isEqualTo("10.0.0.1");
+        assertThat(identity.auditReader()).isFalse();
+    }
+
+    @Test
+    void fromStdioHasAuditReaderTrue() {
+        var identity = CallerIdentity.fromStdio();
+        assertThat(identity.auditReader()).isTrue();
+    }
+
+    @Test
+    void fromApiKeyWithAuditReader() {
+        var identity = CallerIdentity.fromApiKey("compliance", "Compliance Team", "10.0.0.1", true);
+        assertThat(identity.auditReader()).isTrue();
+    }
+
+    @Test
+    void fromApiKeyDefaultsAuditReaderFalse() {
+        var identity = CallerIdentity.fromApiKey("dev", "Dev Team", "10.0.0.1");
+        assertThat(identity.auditReader()).isFalse();
+    }
 }
