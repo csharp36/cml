@@ -130,6 +130,14 @@ public class Application {
                 var permConfig = config.mcpAuth().permissions();
                 PermissionResolver resolver;
                 if ("github".equals(permConfig.type())) {
+                    if (permConfig.serviceAccountToken() == null || permConfig.serviceAccountToken().isBlank()) {
+                        throw new com.indexer.config.ConfigValidationException(
+                                "permissions.serviceAccountToken is required when type=github");
+                    }
+                    if (permConfig.org() == null || permConfig.org().isBlank()) {
+                        throw new com.indexer.config.ConfigValidationException(
+                                "permissions.org is required when type=github");
+                    }
                     resolver = new GitHubPermissionResolver(permConfig.org(), permConfig.serviceAccountToken(), repositoryDao);
                 } else {
                     resolver = new NoOpPermissionResolver(repositoryDao);
@@ -155,8 +163,13 @@ public class Application {
                             String token = authHeader.substring("Bearer ".length());
                             String sourceIp = request.getRemoteAddr();
 
-                            if (finalJwtValidator != null && token.contains(".")) {
-                                identity = finalJwtValidator.validate(token, sourceIp);
+                            if (finalJwtValidator != null && looksLikeJwt(token)) {
+                                try {
+                                    identity = finalJwtValidator.validate(token, sourceIp);
+                                } catch (JwtValidationException e) {
+                                    log.warn("JWT validation failed from {}: {}", sourceIp, e.getMessage());
+                                    throw new RuntimeException("Unauthorized");
+                                }
                             } else if (authenticator.isEnabled()) {
                                 identity = authenticator.authenticate(token, sourceIp)
                                         .orElseThrow(() -> new RuntimeException("Invalid API key"));
@@ -238,6 +251,14 @@ public class Application {
             shutdown();
             System.exit(1);
         }
+    }
+
+    private static boolean looksLikeJwt(String token) {
+        int first = token.indexOf('.');
+        if (first < 0) return false;
+        int second = token.indexOf('.', first + 1);
+        if (second < 0) return false;
+        return token.indexOf('.', second + 1) < 0; // exactly two dots
     }
 
     public void shutdown() {
