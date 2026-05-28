@@ -149,6 +149,10 @@ public class Application {
             // 5e. Set up audit sink
             var auditSink = new com.indexer.audit.PostgresAuditSink(jdbi);
 
+            // 5f. Set up SCIP upload endpoint
+            var scipService = new com.indexer.scip.ScipService(repositoryDao, fileDao, jdbi);
+            var scipApi = new com.indexer.scip.ScipApi(authenticator, scipService, auditSink);
+
             // 6. Build Streamable HTTP transport
             final JwtValidator finalJwtValidator = jwtValidator;
 
@@ -194,6 +198,7 @@ public class Application {
             String adminToken = config.admin() != null ? config.admin().token() : null;
             var adminApi = new AdminApi(adminService, adminToken, auditSink);
             httpServer.addRoutes(adminApi::registerRoutes);
+            httpServer.addRoutes(scipApi::registerRoutes);
 
             // 7. Initialize MCP servers before starting HTTP (transport must be ready before accepting connections)
             mcpServer = new McpServerBootstrap(queryExecutor);
