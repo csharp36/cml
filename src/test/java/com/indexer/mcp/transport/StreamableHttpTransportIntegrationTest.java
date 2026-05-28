@@ -2,12 +2,15 @@ package com.indexer.mcp.transport;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.indexer.auth.ApiKeyAuthenticator;
+import com.indexer.auth.CallerIdentity;
 import com.indexer.db.DatabaseManager;
 import com.indexer.db.EventDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.mcp.McpServerBootstrap;
 import com.indexer.mcp.QueryExecutor;
 import com.indexer.server.HttpServer;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import org.junit.jupiter.api.*;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -20,6 +23,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -233,6 +237,169 @@ class StreamableHttpTransportIntegrationTest {
         } else {
             // Non-200 status is an acceptable rejection
             assertThat(response.statusCode()).isGreaterThanOrEqualTo(400);
+        }
+    }
+
+    @Test
+    void authenticatedRequestSucceeds() throws Exception {
+        // Stop the default server started by @BeforeEach
+        if (mcpBootstrap != null) mcpBootstrap.stop();
+        if (httpServer != null) httpServer.stop();
+
+        // Set up a new server with API key authentication enabled
+        var dbManager = new DatabaseManager(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        dbManager.initialize();
+        var jdbi = dbManager.getJdbi();
+        var repositoryDao = new RepositoryDao(jdbi);
+        var eventDao = new EventDao(jdbi);
+        var queryExecutor = new QueryExecutor(jdbi);
+
+        var authenticator = new ApiKeyAuthenticator(List.of(
+                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User")
+        ));
+
+        var authTransport = HttpServletStreamableServerTransportProvider.builder()
+                .mcpEndpoint("/mcp")
+                .contextExtractor(request -> {
+                    String authHeader = request.getHeader("Authorization");
+                    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                        throw new RuntimeException("Missing Authorization header");
+                    }
+                    String token = authHeader.substring("Bearer ".length());
+                    CallerIdentity identity = authenticator.authenticate(token, request.getRemoteAddr())
+                            .orElseThrow(() -> new RuntimeException("Invalid API key"));
+                    return McpTransportContext.create(Map.of(CallerIdentity.CONTEXT_KEY, identity));
+                })
+                .build();
+
+        int authPort;
+        try (var ss = new ServerSocket(0)) {
+            authPort = ss.getLocalPort();
+        }
+
+        var authHttpServer = new HttpServer(eventDao, repositoryDao, authTransport);
+        var authMcpBootstrap = new McpServerBootstrap(queryExecutor);
+        authMcpBootstrap.startHttp(authTransport);
+        authHttpServer.start(authPort);
+
+        try {
+            String authBaseUrl = "http://localhost:" + authPort;
+            String initBody = """
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2025-03-26",
+                            "capabilities": {},
+                            "clientInfo": {
+                                "name": "integration-test",
+                                "version": "1.0.0"
+                            }
+                        }
+                    }
+                    """;
+
+            var initResponse = client.send(HttpRequest.newBuilder()
+                    .uri(URI.create(authBaseUrl + "/mcp"))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream, application/json")
+                    .header("Authorization", "Bearer test-secret-key")
+                    .POST(HttpRequest.BodyPublishers.ofString(initBody))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+
+            assertThat(initResponse.statusCode()).isEqualTo(200);
+
+            String sessionId = initResponse.headers().firstValue("Mcp-Session-Id").orElse(
+                    initResponse.headers().firstValue("mcp-session-id").orElse(null));
+            assertThat(sessionId)
+                    .as("Authenticated initialize should return a session ID")
+                    .isNotNull()
+                    .isNotBlank();
+
+            JsonNode initResult = parseSseResponse(initResponse.body());
+            assertThat(initResult.has("result")).isTrue();
+            assertThat(initResult.get("result").has("serverInfo")).isTrue();
+        } finally {
+            authMcpBootstrap.stop();
+            authHttpServer.stop();
+        }
+    }
+
+    @Test
+    void unauthenticatedRequestRejectedWhenAuthConfigured() throws Exception {
+        // Stop the default server started by @BeforeEach
+        if (mcpBootstrap != null) mcpBootstrap.stop();
+        if (httpServer != null) httpServer.stop();
+
+        // Set up a new server with API key authentication enabled
+        var dbManager = new DatabaseManager(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+        dbManager.initialize();
+        var jdbi = dbManager.getJdbi();
+        var repositoryDao = new RepositoryDao(jdbi);
+        var eventDao = new EventDao(jdbi);
+        var queryExecutor = new QueryExecutor(jdbi);
+
+        var authenticator = new ApiKeyAuthenticator(List.of(
+                new ApiKeyAuthenticator.ApiKeyConfig("test-secret-key", "test-user", "Test User")
+        ));
+
+        var authTransport = HttpServletStreamableServerTransportProvider.builder()
+                .mcpEndpoint("/mcp")
+                .contextExtractor(request -> {
+                    String authHeader = request.getHeader("Authorization");
+                    if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                        throw new RuntimeException("Missing Authorization header");
+                    }
+                    String token = authHeader.substring("Bearer ".length());
+                    CallerIdentity identity = authenticator.authenticate(token, request.getRemoteAddr())
+                            .orElseThrow(() -> new RuntimeException("Invalid API key"));
+                    return McpTransportContext.create(Map.of(CallerIdentity.CONTEXT_KEY, identity));
+                })
+                .build();
+
+        int authPort;
+        try (var ss = new ServerSocket(0)) {
+            authPort = ss.getLocalPort();
+        }
+
+        var authHttpServer = new HttpServer(eventDao, repositoryDao, authTransport);
+        var authMcpBootstrap = new McpServerBootstrap(queryExecutor);
+        authMcpBootstrap.startHttp(authTransport);
+        authHttpServer.start(authPort);
+
+        try {
+            String authBaseUrl = "http://localhost:" + authPort;
+            String initBody = """
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2025-03-26",
+                            "capabilities": {},
+                            "clientInfo": {
+                                "name": "integration-test",
+                                "version": "1.0.0"
+                            }
+                        }
+                    }
+                    """;
+
+            // Send request WITHOUT Authorization header
+            var response = client.send(HttpRequest.newBuilder()
+                    .uri(URI.create(authBaseUrl + "/mcp"))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream, application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(initBody))
+                    .build(), HttpResponse.BodyHandlers.ofString());
+
+            assertThat(response.statusCode())
+                    .as("Request without Authorization header should be rejected with a 4xx status")
+                    .isGreaterThanOrEqualTo(400);
+        } finally {
+            authMcpBootstrap.stop();
+            authHttpServer.stop();
         }
     }
 
