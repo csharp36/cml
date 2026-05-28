@@ -932,6 +932,89 @@ public class QueryExecutor {
         });
     }
 
+    /**
+     * Compare two branches and return differences at file or symbol granularity.
+     * Uses DISTINCT ON overlay for each branch to get effective file sets, then FULL OUTER JOIN to find diffs.
+     */
+    public Map<String, Object> diffBranches(String repo, String branchA, String branchB, String detail, int limit) {
+        String effectiveDetail = (detail != null && "files".equalsIgnoreCase(detail)) ? "files" : "symbols";
+        ensureBranchIndexed(repo, branchA);
+        ensureBranchIndexed(repo, branchB);
+
+        return jdbi.withHandle(handle -> {
+            var optRepo = handle.createQuery("SELECT id FROM repositories WHERE name = :name")
+                    .bind("name", repo)
+                    .mapTo(Integer.class)
+                    .findOne();
+            if (optRepo.isEmpty()) {
+                return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
+            }
+            int repoId = optRepo.get();
+
+            if ("files".equals(effectiveDetail)) {
+                return diffFiles(handle, repoId, branchA, branchB, limit);
+            } else {
+                return diffSymbols(handle, repoId, branchA, branchB, limit);
+            }
+        });
+    }
+
+    private Map<String, Object> diffFiles(org.jdbi.v3.core.Handle handle, int repoId,
+                                           String branchA, String branchB, int limit) {
+        var rows = handle.createQuery("""
+                WITH effective_a AS (
+                    SELECT DISTINCT ON (path) path, language, last_commit_sha
+                    FROM files WHERE repo_id = :repoId AND branch IN (:branchA, 'main')
+                    ORDER BY path, CASE WHEN branch = :branchA THEN 0 ELSE 1 END
+                ),
+                effective_b AS (
+                    SELECT DISTINCT ON (path) path, language, last_commit_sha
+                    FROM files WHERE repo_id = :repoId AND branch IN (:branchB, 'main')
+                    ORDER BY path, CASE WHEN branch = :branchB THEN 0 ELSE 1 END
+                )
+                SELECT a.path AS a_path, a.language AS a_lang, a.last_commit_sha AS a_sha,
+                       b.path AS b_path, b.language AS b_lang, b.last_commit_sha AS b_sha
+                FROM effective_a a
+                FULL OUTER JOIN effective_b b ON a.path = b.path
+                WHERE a.path IS NULL OR b.path IS NULL OR a.last_commit_sha != b.last_commit_sha
+                LIMIT :limit
+                """)
+                .bind("repoId", repoId)
+                .bind("branchA", branchA)
+                .bind("branchB", branchB)
+                .bind("limit", limit)
+                .mapToMap()
+                .list();
+
+        var added = new java.util.ArrayList<Map<String, Object>>();
+        var removed = new java.util.ArrayList<Map<String, Object>>();
+        var modified = new java.util.ArrayList<Map<String, Object>>();
+
+        for (var row : rows) {
+            if (row.get("b_path") == null) {
+                added.add(Map.of("path", row.get("a_path"), "language", nullSafeObj(row.get("a_lang"))));
+            } else if (row.get("a_path") == null) {
+                removed.add(Map.of("path", row.get("b_path"), "language", nullSafeObj(row.get("b_lang"))));
+            } else {
+                modified.add(Map.of("path", row.get("a_path"), "language", nullSafeObj(row.get("a_lang"))));
+            }
+        }
+
+        return Map.of("detail", "files", "branch_a", branchA, "branch_b", branchB,
+                "added", added, "removed", removed, "modified", modified);
+    }
+
+    private Map<String, Object> diffSymbols(org.jdbi.v3.core.Handle handle, int repoId,
+                                             String branchA, String branchB, int limit) {
+        // Stub — replaced in Task 2
+        return Map.of("detail", "symbols", "branch_a", branchA, "branch_b", branchB,
+                "added", List.of(), "removed", List.of(), "modified", List.of());
+    }
+
+    private static Object nullSafeObj(Object val) {
+        return val != null ? val : "";
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------
