@@ -122,6 +122,25 @@ class ConfigLoaderTest {
         assertThat(config.admin()).isNull();
     }
 
+    @Test
+    void expandsTildeInCloneBaseDir() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: ~/.source-code-indexer/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+                """;
+        ConfigLoader loader = new ConfigLoader();
+        IndexerConfig config = loader.load(toStream(yaml));
+
+        String home = System.getProperty("user.home");
+        assertThat(config.server().cloneBaseDir())
+                .isEqualTo(home + "/.source-code-indexer/repos")
+                .doesNotContain("~");
+    }
+
     private InputStream toStream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }

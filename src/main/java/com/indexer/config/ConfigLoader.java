@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.indexer.util.PathUtil;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -93,7 +94,7 @@ public class ConfigLoader {
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
         if (node == null) return null;
-        String cloneBaseDir = textOrNull(node, "cloneBaseDir");
+        String cloneBaseDir = PathUtil.expandUserHome(textOrNull(node, "cloneBaseDir"));
         long maxFileSizeBytes = node.has("maxFileSizeBytes") ? node.get("maxFileSizeBytes").asLong(0) : 0;
         int indexWorkers = node.has("indexWorkers") ? node.get("indexWorkers").asInt(0) : 0;
         int httpPort = node.has("httpPort") ? node.get("httpPort").asInt(0) : 0;
