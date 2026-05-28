@@ -60,6 +60,8 @@ public class JwtValidator {
             if (groups == null) groups = List.of();
 
             return CallerIdentity.fromOAuth(sub, name, groups, sourceIp);
+        } catch (JwtValidationException e) {
+            throw e;
         } catch (Exception e) {
             String message = e.getMessage();
             if (message == null) message = e.getClass().getSimpleName();

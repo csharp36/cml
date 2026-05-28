@@ -64,7 +64,14 @@ public class QueryExecutor {
         log.info("Tool call: {} by {} ({})", action, caller.displayName(), caller.authMethod());
 
         // Authorization check — only for OAuth users with configured permissions
-        if (permissionCache != null && repo != null && "oauth".equals(caller.authMethod())) {
+        if (permissionCache != null && "oauth".equals(caller.authMethod())) {
+            if (repo == null) {
+                log.warn("Access denied: {} called {} without repo parameter", caller.displayName(), action);
+                return McpSchema.CallToolResult.builder()
+                        .addTextContent("Repository parameter is required for authenticated queries")
+                        .isError(true)
+                        .build();
+            }
             try {
                 Set<String> allowed = permissionCache.getAllowedRepos(caller);
                 if (!allowed.contains(repo)) {
