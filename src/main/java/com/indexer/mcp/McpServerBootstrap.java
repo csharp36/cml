@@ -41,7 +41,7 @@ public class McpServerBootstrap {
     public void startStdio() {
         var transport = new StdioServerTransportProvider(McpJsonDefaults.getMapper());
         stdioServer = buildServer(transport);
-        log.info("MCP server started over stdio with 13 tools registered");
+        log.info("MCP server started over stdio with 14 tools registered");
     }
 
     public void startHttp(McpStreamableServerTransportProvider httpTransport) {
@@ -60,8 +60,9 @@ public class McpServerBootstrap {
                 .toolCall(checkSyncTool(), this::handleCheckSync)
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
+                .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .build();
-        log.info("MCP server started over Streamable HTTP with 13 tools registered");
+        log.info("MCP server started over Streamable HTTP with 14 tools registered");
     }
 
     private McpSyncServer buildServer(McpServerTransportProvider transport) {
@@ -80,6 +81,7 @@ public class McpServerBootstrap {
                 .toolCall(checkSyncTool(), this::handleCheckSync)
                 .toolCall(queryAuditLogTool(), this::handleQueryAuditLog)
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
+                .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .build();
     }
 
@@ -299,6 +301,22 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool diffBranchesTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("repo",     Map.of("type", "string", "description", "Repository name"));
+        props.put("branch_a", Map.of("type", "string", "description", "First branch (treated as 'new')"));
+        props.put("branch_b", Map.of("type", "string", "description", "Second branch (treated as 'old')"));
+        props.put("detail",   Map.of("type", "string", "description", "Granularity: 'files' or 'symbols' (default: symbols)"));
+        props.put("limit",    Map.of("type", "integer", "description", "Max results (default 100)", "default", 100));
+        var schema = new McpSchema.JsonSchema("object", props,
+                List.of("repo", "branch_a", "branch_b"), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("diff_branches")
+                .description("Compare two branches and show what's different. Returns added, removed, and modified files or symbols.")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -488,6 +506,18 @@ public class McpServerBootstrap {
 
         return queryExecutor.executeQuery(caller, null, "verify_audit_chain", args,
                 () -> queryExecutor.verifyAuditChain(intArg(args, "count", 100)));
+    }
+
+    private McpSchema.CallToolResult handleDiffBranches(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "diff_branches", args,
+                () -> queryExecutor.diffBranches(
+                        repo, stringArg(args, "branch_a"), stringArg(args, "branch_b"),
+                        stringArg(args, "detail"), intArg(args, "limit", 100)));
     }
 
     private java.time.Instant parseInstant(String s) {
