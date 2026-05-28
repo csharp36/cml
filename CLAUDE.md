@@ -409,6 +409,24 @@ Body: raw SCIP protobuf bytes
 
 Each upload replaces all SCIP data for the repo. `get_index_health` reports SCIP staleness per repo: `fresh` (SCIP SHA matches indexed SHA), `stale` (behind), or `unavailable` (no upload yet).
 
+## SCIP CLI Wrapper
+
+A portable Bash script for generating and uploading SCIP data from CI pipelines.
+
+### Usage
+
+```bash
+# Auto-detect language and upload
+./scripts/scip-upload.sh --server http://indexer:8080 --repo my-repo --api-key "$KEY"
+
+# Upload a pre-built SCIP file
+./scripts/scip-upload.sh --scip-file build/index.scip --server http://indexer:8080 --repo my-repo --api-key "$KEY"
+```
+
+Supports Java (`scip-java`), Python (`scip-python`), and TypeScript (`scip-typescript`) auto-detection. Use `--scip-file` for other languages.
+
+See `docs/ci-pipeline-guide.md` for GitHub Actions, GitLab CI, and generic CI examples.
+
 ## Admin UI
 
 React SPA dashboard served at `http://localhost:8080/admin/ui/`.
