@@ -2,10 +2,14 @@ package com.indexer.auth;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.ECDSASigner;
 import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyUse;
 import com.nimbusds.jose.jwk.RSAKey;
+import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
 import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
@@ -27,17 +31,24 @@ class JwtValidatorTest {
     private static final String ISSUER = "https://idp.example.com";
     private static final String AUDIENCE = "source-code-indexer";
 
-    private static RSAKey testKey;
+    private static RSAKey rsaKey;
+    private static ECKey ecKey;
     private static JWKSource<SecurityContext> testKeySource;
 
     @BeforeAll
-    static void generateKey() throws Exception {
-        testKey = new RSAKeyGenerator(2048)
+    static void generateKeys() throws Exception {
+        rsaKey = new RSAKeyGenerator(2048)
                 .keyUse(KeyUse.SIGNATURE)
                 .keyID(UUID.randomUUID().toString())
                 .algorithm(JWSAlgorithm.RS256)
                 .generate();
-        testKeySource = new ImmutableJWKSet<>(new JWKSet(testKey.toPublicJWK()));
+        ecKey = new ECKeyGenerator(Curve.P_256)
+                .keyUse(KeyUse.SIGNATURE)
+                .keyID(UUID.randomUUID().toString())
+                .algorithm(JWSAlgorithm.ES256)
+                .generate();
+        testKeySource = new ImmutableJWKSet<>(new JWKSet(List.of(
+                rsaKey.toPublicJWK(), ecKey.toPublicJWK())));
     }
 
     @Test
@@ -115,6 +126,31 @@ class JwtValidatorTest {
         assertThat(identity.groups()).containsExactly("admin", "reader");
     }
 
+    @Test
+    void es256TokenIsAccepted() throws Exception {
+        var builder = new JWTClaimsSet.Builder()
+                .subject("carol")
+                .claim("name", "Carol")
+                .claim("groups", List.of("team-infra"))
+                .issuer(ISSUER)
+                .audience(AUDIENCE)
+                .expirationTime(new Date(System.currentTimeMillis() + 300_000))
+                .issueTime(new Date());
+
+        var jwt = new SignedJWT(
+                new JWSHeader.Builder(JWSAlgorithm.ES256)
+                        .keyID(ecKey.getKeyID())
+                        .build(),
+                builder.build());
+        jwt.sign(new ECDSASigner(ecKey));
+
+        var validator = new JwtValidator(testKeySource, ISSUER, AUDIENCE, "groups");
+        CallerIdentity identity = validator.validate(jwt.serialize(), "10.0.0.2");
+
+        assertThat(identity.userId()).isEqualTo("carol");
+        assertThat(identity.groups()).containsExactly("team-infra");
+    }
+
     // --- Test helpers ---
 
     private static String mintToken(String sub, String name, List<String> groups,
@@ -140,10 +176,10 @@ class JwtValidatorTest {
 
             var jwt = new SignedJWT(
                     new JWSHeader.Builder(JWSAlgorithm.RS256)
-                            .keyID(testKey.getKeyID())
+                            .keyID(rsaKey.getKeyID())
                             .build(),
                     builder.build());
-            jwt.sign(new RSASSASigner(testKey));
+            jwt.sign(new RSASSASigner(rsaKey));
             return jwt.serialize();
         } catch (Exception e) {
             throw new RuntimeException("Failed to mint test token", e);

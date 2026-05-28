@@ -14,9 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URL;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class JwtValidator {
 
@@ -51,6 +50,9 @@ public class JwtValidator {
             JWTClaimsSet claims = processor.process(jwt, null);
 
             String sub = claims.getSubject();
+            if (sub == null || sub.isBlank()) {
+                throw new JwtValidationException("JWT missing required 'sub' claim value");
+            }
             String name = claims.getStringClaim("name");
             if (name == null) name = sub;
 
@@ -67,18 +69,19 @@ public class JwtValidator {
 
     private static ConfigurableJWTProcessor<SecurityContext> buildProcessor(
             JWKSource<SecurityContext> keySource, String issuer, String audience) {
-        var keySelector = new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, keySource);
+        var keySelector = new JWSVerificationKeySelector<>(
+                Set.of(JWSAlgorithm.RS256, JWSAlgorithm.ES256), keySource);
 
         var processor = new DefaultJWTProcessor<SecurityContext>();
         processor.setJWSKeySelector(keySelector);
         processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
                 audience,
                 new JWTClaimsSet.Builder().issuer(issuer).build(),
-                new HashSet<>(Arrays.asList(
+                Set.of(
                         JWTClaimNames.SUBJECT,
                         JWTClaimNames.EXPIRATION_TIME,
                         JWTClaimNames.ISSUED_AT
-                ))
+                )
         ));
         return processor;
     }
