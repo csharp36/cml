@@ -62,6 +62,7 @@ public class McpServerBootstrap {
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .toolCall(searchBranchesTool(), this::handleSearchBranches)
+                .toolCall(getTypeHierarchyTool(), this::handleGetTypeHierarchy)
                 .build();
         log.info("MCP server started over Streamable HTTP with 15 tools registered");
     }
@@ -84,6 +85,7 @@ public class McpServerBootstrap {
                 .toolCall(verifyAuditChainTool(), this::handleVerifyAuditChain)
                 .toolCall(diffBranchesTool(), this::handleDiffBranches)
                 .toolCall(searchBranchesTool(), this::handleSearchBranches)
+                .toolCall(getTypeHierarchyTool(), this::handleGetTypeHierarchy)
                 .build();
     }
 
@@ -336,6 +338,23 @@ public class McpServerBootstrap {
                 .build();
     }
 
+    private McpSchema.Tool getTypeHierarchyTool() {
+        var props = new LinkedHashMap<String, Object>();
+        props.put("repo",        Map.of("type", "string", "description", "Repository name"));
+        props.put("symbol_name", Map.of("type", "string", "description", "Display name of the type (e.g., PaymentProcessor)"));
+        props.put("file_path",   Map.of("type", "string", "description", "File path to disambiguate when multiple symbols share a name"));
+        props.put("kind",        Map.of("type", "string", "description", "Filter by symbol kind (Class, Interface, etc.)"));
+        props.put("direction",   Map.of("type", "string", "description", "Traversal direction: up (supertypes), down (subtypes), or both (default: both)"));
+        props.put("depth",       Map.of("type", "integer", "description", "Max traversal depth (default: 3)", "default", 3));
+        var schema = new McpSchema.JsonSchema("object", props,
+                List.of("repo", "symbol_name"), false, null, null);
+        return McpSchema.Tool.builder()
+                .name("get_type_hierarchy")
+                .description("Get the type hierarchy for a symbol using SCIP semantic data. Shows supertypes (interfaces/base classes) and subtypes (implementations/subclasses). Requires SCIP data to be uploaded for the repo.")
+                .inputSchema(schema)
+                .build();
+    }
+
     // -----------------------------------------------------------------------
     // Identity extraction
     // -----------------------------------------------------------------------
@@ -551,6 +570,19 @@ public class McpServerBootstrap {
                         stringArg(args, "branch_pattern"),
                         intArg(args, "max_branches", 50),
                         intArg(args, "limit", 20)));
+    }
+
+    private McpSchema.CallToolResult handleGetTypeHierarchy(
+            McpSyncServerExchange exchange,
+            McpSchema.CallToolRequest request) {
+        var args = request.arguments();
+        var caller = extractIdentity(exchange);
+        String repo = stringArg(args, "repo");
+        return queryExecutor.executeQuery(caller, repo, "get_type_hierarchy", args,
+                () -> queryExecutor.getTypeHierarchy(
+                        repo, stringArg(args, "symbol_name"),
+                        stringArg(args, "file_path"), stringArg(args, "kind"),
+                        stringArg(args, "direction"), intArg(args, "depth", 3)));
     }
 
     private java.time.Instant parseInstant(String s) {
