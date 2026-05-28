@@ -13,6 +13,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -69,44 +71,48 @@ class BranchQueryTest {
         queryExecutor = new QueryExecutor(jdbi);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void branchQueryReturnsOverlayedSymbols() {
         // Branch query should see symbols from branch App.java AND main Utils.java
-        var results = queryExecutor.searchSymbols(null, "class", null, null, "feature/new-auth", 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols(null, "class", null, null, "feature/new-auth", 20);
         assertThat(results).hasSize(2);
         assertThat(results).anyMatch(s -> "App".equals(s.get("name")));
         assertThat(results).anyMatch(s -> "Utils".equals(s.get("name")));
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void branchFilesTakePriorityOverMainForSamePath() {
         // Search for "authenticate" method — only exists on branch App.java
-        var results = queryExecutor.searchSymbols("authenticate", null, null, null, "feature/new-auth", 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols("authenticate", null, null, null, "feature/new-auth", 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("name")).isEqualTo("authenticate");
 
         // "helper" method only exists on main App.java — should NOT appear for branch
         // because branch App.java replaces main App.java
-        var helperResults = queryExecutor.searchSymbols("helper", null, null, null, "feature/new-auth", 20);
+        var helperResults = (List<Map<String, Object>>) queryExecutor.searchSymbols("helper", null, null, null, "feature/new-auth", 20);
         assertThat(helperResults).isEmpty();
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void mainQueryDoesNotSeeBranchData() {
         // Main query should not see "authenticate" method (only on branch)
-        var results = queryExecutor.searchSymbols("authenticate", null, null, null, "main", 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols("authenticate", null, null, null, "main", 20);
         assertThat(results).isEmpty();
 
         // Main query should still see "helper" method
-        var helperResults = queryExecutor.searchSymbols("helper", null, null, null, "main", 20);
+        var helperResults = (List<Map<String, Object>>) queryExecutor.searchSymbols("helper", null, null, null, "main", 20);
         assertThat(helperResults).hasSize(1);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void nullBranchDefaultsToMain() {
         // Null branch should behave exactly like "main"
-        var nullResults = queryExecutor.searchSymbols(null, null, null, null, null, 20);
-        var mainResults = queryExecutor.searchSymbols(null, null, null, null, "main", 20);
+        var nullResults = (List<Map<String, Object>>) queryExecutor.searchSymbols(null, null, null, null, null, 20);
+        var mainResults = (List<Map<String, Object>>) queryExecutor.searchSymbols(null, null, null, null, "main", 20);
         assertThat(nullResults).hasSameSizeAs(mainResults);
 
         // Should not see "authenticate" (branch-only)

@@ -18,6 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.net.http.HttpRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -100,11 +101,13 @@ class IntegrationSmokeTest {
         pipeline.fullIndex(repoId, repoDir);
 
         // Verify: search_symbols finds ServiceImpl
-        var symbols = queryExecutor.searchSymbols("ServiceImpl", null, null, null, null, 20);
+        @SuppressWarnings("unchecked")
+        var symbols = (List<Map<String, Object>>) queryExecutor.searchSymbols("ServiceImpl", null, null, null, null, 20);
         assertThat(symbols).anyMatch(s -> "ServiceImpl".equals(s.get("name")));
 
         // Verify: find_implementations finds ServiceImpl as implementing Service
-        var impls = queryExecutor.findImplementations("Service", null, null);
+        @SuppressWarnings("unchecked")
+        var impls = (List<Map<String, Object>>) queryExecutor.findImplementations("Service", null, null);
         assertThat(impls).anyMatch(s -> "ServiceImpl".equals(s.get("class_name")));
 
         // Verify: search_code finds text content

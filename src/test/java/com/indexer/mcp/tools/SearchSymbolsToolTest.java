@@ -12,6 +12,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
@@ -40,30 +42,34 @@ class SearchSymbolsToolTest {
         queryExecutor = new QueryExecutor(jdbi);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void searchesByName() {
-        var results = queryExecutor.searchSymbols("App", null, null, null, null, 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols("App", null, null, null, null, 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("name")).isEqualTo("App");
         assertThat(results.get(0).get("kind")).isEqualTo("class");
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void searchesByKind() {
-        var results = queryExecutor.searchSymbols(null, "method", null, null, null, 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols(null, "method", null, null, null, 20);
         assertThat(results).hasSize(2);
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void searchesByNamePattern() {
-        var results = queryExecutor.searchSymbols("run", null, null, null, null, 20);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols("run", null, null, null, null, 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("signature")).isEqualTo("public void run()");
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     void respectsLimit() {
-        var results = queryExecutor.searchSymbols(null, null, null, null, null, 1);
+        var results = (List<Map<String, Object>>) queryExecutor.searchSymbols(null, null, null, null, null, 1);
         assertThat(results).hasSize(1);
     }
 }

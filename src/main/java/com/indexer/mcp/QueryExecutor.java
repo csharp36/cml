@@ -172,7 +172,7 @@ public class QueryExecutor {
     /**
      * Search symbols by name (regex), kind, language, and repo.
      */
-    public List<Map<String, Object>> searchSymbols(String query, String kind, String language, String repo, String branch, int limit) {
+    public Object searchSymbols(String query, String kind, String language, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
@@ -216,7 +216,17 @@ public class QueryExecutor {
 
             var q = handle.createQuery(sb.toString());
             params.forEach(q::bind);
-            return q.mapToMap().list();
+            var results = q.mapToMap().list();
+
+            // Wrap in a map with scip_status if repo is specified
+            if (repo != null && !repo.isBlank()) {
+                var wrapper = new LinkedHashMap<String, Object>();
+                wrapper.put("results", results);
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) wrapper.put("scip_status", scipStatus);
+                return wrapper;
+            }
+            return results;
         });
     }
 
@@ -295,6 +305,10 @@ public class QueryExecutor {
                     .list();
             symbol.put("relationships", relationships);
 
+            // Add SCIP precision indicator
+            String scipStatus = getScipStatus(repo);
+            if (scipStatus != null) symbol.put("scip_status", scipStatus);
+
             return (Map<String, Object>) symbol;
         });
     }
@@ -302,7 +316,7 @@ public class QueryExecutor {
     /**
      * Find implementations of a type by looking up 'implements' relationships.
      */
-    public List<Map<String, Object>> findImplementations(String typeName, String repo, String branch) {
+    public Object findImplementations(String typeName, String repo, String branch) {
         String effectiveBranch = resolveBranch(branch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
@@ -333,14 +347,23 @@ public class QueryExecutor {
 
             var q = handle.createQuery(sb.toString());
             params.forEach(q::bind);
-            return q.mapToMap().list();
+            var results = q.mapToMap().list();
+
+            if (repo != null && !repo.isBlank()) {
+                var wrapper = new LinkedHashMap<String, Object>();
+                wrapper.put("results", results);
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) wrapper.put("scip_status", scipStatus);
+                return wrapper;
+            }
+            return results;
         });
     }
 
     /**
      * Find files that import a given symbol name.
      */
-    public List<Map<String, Object>> findReferences(String symbolName, String repo, String branch, int limit) {
+    public Object findReferences(String symbolName, String repo, String branch, int limit) {
         String effectiveBranch = resolveBranch(branch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
@@ -373,7 +396,16 @@ public class QueryExecutor {
 
             var q = handle.createQuery(sb.toString());
             params.forEach(q::bind);
-            return q.mapToMap().list();
+            var results = q.mapToMap().list();
+
+            if (repo != null && !repo.isBlank()) {
+                var wrapper = new LinkedHashMap<String, Object>();
+                wrapper.put("results", results);
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) wrapper.put("scip_status", scipStatus);
+                return wrapper;
+            }
+            return results;
         });
     }
 
@@ -571,6 +603,10 @@ public class QueryExecutor {
                 result.put("topLevelDirectories", topLevelDirs);
             }
 
+            // Add SCIP precision indicator
+            String scipStatus = getScipStatus(repoName);
+            if (scipStatus != null) result.put("scip_status", scipStatus);
+
             return (Map<String, Object>) result;
         });
     }
@@ -721,6 +757,29 @@ public class QueryExecutor {
             result.put("recentFailures", recentFailures);
 
             return result;
+        });
+    }
+
+    /**
+     * Get the SCIP data status for a given repository.
+     * Returns "fresh", "stale", or "unavailable".
+     */
+    public String getScipStatus(String repoName) {
+        if (repoName == null || repoName.isBlank()) return null;
+        return jdbi.withHandle(handle -> {
+            var opt = handle.createQuery("""
+                    SELECT scip_sha, last_indexed_sha
+                    FROM repositories WHERE name = :name
+                    """)
+                    .bind("name", repoName)
+                    .mapToMap()
+                    .findOne();
+            if (opt.isEmpty()) return null;
+            var row = opt.get();
+            Object scipSha = row.get("scip_sha");
+            Object indexedSha = row.get("last_indexed_sha");
+            if (scipSha == null) return "unavailable";
+            return scipSha.equals(indexedSha) ? "fresh" : "stale";
         });
     }
 
