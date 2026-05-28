@@ -21,6 +21,9 @@ dependencies {
     implementation("io.modelcontextprotocol.sdk:mcp-core:1.1.2")
     implementation("io.modelcontextprotocol.sdk:mcp-json-jackson2:1.1.2")
 
+    // JWT validation
+    implementation("com.nimbusds:nimbus-jose-jwt:10.9")
+
     // HTTP server
     implementation("io.javalin:javalin:7.2.2")
 
