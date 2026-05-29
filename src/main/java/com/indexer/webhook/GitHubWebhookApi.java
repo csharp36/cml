@@ -94,18 +94,29 @@ public class GitHubWebhookApi {
         long eventId = eventDao.insert(repoName, repo.clonePath(), "github_push",
                 payload.before(), payload.after(), branch);
         eventDao.notifyNewEvent();
+        auditEnqueue(ctx, repoName, eventId);
         log.info("GitHub webhook event #{} for repo {} ({} -> {})",
                 eventId, repoName, payload.before(), payload.after());
         ctx.status(202).json(Map.of("eventId", eventId));
     }
 
     private void auditAuthFailure(Context ctx, String repo, String message) {
+        audit(ctx, "githubWebhook:authFailure", repo, false, "denied", message);
+    }
+
+    /** Records the verified, state-changing enqueue — the audit event that matters most. */
+    private void auditEnqueue(Context ctx, String repo, long eventId) {
+        audit(ctx, "githubWebhook:enqueue", repo, true, "success", "event #" + eventId);
+    }
+
+    private void audit(Context ctx, String action, String repo,
+                       boolean authorized, String resultStatus, String message) {
         if (auditSink == null) return;
         try {
             var caller = CallerIdentity.anonymous(ctx.ip());
-            auditSink.record(AuditEvent.from(caller, "githubWebhook:authFailure", repo, false, "denied", message));
+            auditSink.record(AuditEvent.from(caller, action, repo, authorized, resultStatus, message));
         } catch (Exception e) {
-            log.warn("Audit write failed for GitHub webhook auth failure: {}", e.getMessage());
+            log.warn("Audit write failed for {} ({}): {}", action, repo, e.getMessage());
         }
     }
 }

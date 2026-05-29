@@ -42,6 +42,10 @@ public class HttpServer {
 
     public Javalin createApp() {
         app = Javalin.create(config -> {
+            // Javalin caps cached request bodies at 1 MB by default, which would reject
+            // large GitHub webhook payloads (up to 25 MB) and SCIP uploads (up to 50 MB),
+            // both of which read via ctx.bodyAsBytes(). Raise to 50 MB to cover both.
+            config.http.maxRequestSize = 52_428_800L; // 50 MB
             config.staticFiles.add(staticFiles -> {
                 staticFiles.hostedPath = "/admin/ui";
                 staticFiles.directory = "admin-ui/dist";

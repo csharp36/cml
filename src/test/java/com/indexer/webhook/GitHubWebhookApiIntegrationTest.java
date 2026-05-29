@@ -1,5 +1,6 @@
 package com.indexer.webhook;
 
+import com.indexer.audit.AuditEvent;
 import com.indexer.audit.AuditSink;
 import com.indexer.db.DatabaseManager;
 import com.indexer.db.EventDao;
@@ -23,7 +24,10 @@ import java.util.HexFormat;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import org.mockito.ArgumentCaptor;
 
 @Testcontainers
 @Tag("integration")
@@ -38,6 +42,7 @@ class GitHubWebhookApiIntegrationTest {
     private HttpServer httpServer;
     private EventDao eventDao;
     private RepositoryDao repositoryDao;
+    private AuditSink auditSink;
     private HttpClient client;
     private String baseUrl;
 
@@ -57,7 +62,8 @@ class GitHubWebhookApiIntegrationTest {
         repositoryDao.insert(new Repository(0, "cml", "git@github.com:org/cml.git",
                 "main", "/tmp/cml", "SSH_KEY", "abc", null));
 
-        var api = new GitHubWebhookApi(Map.of("cml", SECRET), repositoryDao, eventDao, mock(AuditSink.class));
+        auditSink = mock(AuditSink.class);
+        var api = new GitHubWebhookApi(Map.of("cml", SECRET), repositoryDao, eventDao, auditSink);
 
         int port;
         try (var ss = new ServerSocket(0)) {
@@ -157,5 +163,34 @@ class GitHubWebhookApiIntegrationTest {
         var resp = post("/webhook/github/cml", body, "push", sign(body));
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
+    }
+
+    @Test
+    void largePushAboveDefaultLimitIsAccepted() throws Exception {
+        // ~2 MB body — exceeds Javalin's default 1 MB maxRequestSize. With the raised
+        // limit it must be read in full, verified, and enqueued (not truncated/rejected).
+        String filler = "x".repeat(2 * 1024 * 1024);
+        String body = "{\"ref\":\"refs/heads/main\",\"before\":\"old\",\"after\":\"new\","
+                + "\"repository\":{\"name\":\"cml\"},\"_filler\":\"" + filler + "\"}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(202);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(1);
+    }
+
+    @Test
+    void validPushRecordsSuccessAudit() throws Exception {
+        String body = "{\"ref\":\"refs/heads/main\",\"before\":\"old\",\"after\":\"new\",\"repository\":{\"name\":\"cml\"}}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(202);
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditSink, atLeastOnce()).record(captor.capture());
+        assertThat(captor.getAllValues())
+                .anySatisfy(e -> {
+                    assertThat(e.action()).isEqualTo("githubWebhook:enqueue");
+                    assertThat(e.repo()).isEqualTo("cml");
+                    assertThat(e.authorized()).isTrue();
+                    assertThat(e.resultStatus()).isEqualTo("success");
+                });
     }
 }
