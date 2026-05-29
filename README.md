@@ -30,6 +30,74 @@ AI Client <--MCP/stdio|HTTP--> CML Server
 - **Admin API + UI** — REST endpoints + React dashboard for repo management, event monitoring, and health checks
 - **Enterprise-ready** — stateless design, multi-instance safe (SKIP LOCKED event queue), PostgreSQL-backed
 
+## When to Use CML (and When Not)
+
+CML is **not** a replacement for `git`, `grep`/`ripgrep`, or your IDE. It's a code-intelligence
+layer optimized for one consumer — an LLM — and measured in tokens, latency, and retrieval
+quality rather than human ergonomics. Be clear-eyed about where it helps:
+
+**CML is the better tool when:**
+
+- **The code isn't checked out locally — or spans many repos.** Queries hit CML's *server-side*
+  clones, so an agent on a laptop, a CI runner, or a web client can search and navigate code it
+  has never cloned. `git`/`grep` require a local clone of every repo first. One server-side clone
+  is shared by every client.
+- **You need type-resolved semantics.** `find_implementations`, `get_type_hierarchy`, and
+  `get_symbol_references` answer "who implements this interface / what's the subtype tree / who
+  references this symbol" from SCIP data. `grep` finds *text* — it can't resolve types or follow
+  `implements`/`extends` edges without running a compiler or LSP yourself.
+- **Token economy matters.** Tools return *shaped* results — signatures + locations, file
+  structure without bodies — instead of raw file dumps or `grep -A/-B` context. For an LLM
+  navigating a large codebase, that's the difference between answering a question and blowing the
+  context window.
+- **You're comparing two builds you don't have on disk** (see the stack-trace workflow below).
+
+**Plain `git` / `ripgrep` / your IDE is better when:**
+
+- **You already have the repo checked out and it's a single repo.** `rg "pattern"` is faster and
+  cheaper than a network round-trip, and `git diff a..b` is exact and battle-tested.
+- **You want an authoritative file-level diff.** `git diff` is the source of truth; CML's *symbol*
+  diff is a convenience layered on top, and only as good as its parser.
+- **You need full file content, `blame`, or history.** That's git's job — CML stores an index, not
+  your version control.
+
+> **Rule of thumb:** reach for CML when the alternative is *"clone it first"* or *"read 20 files
+> into the model to answer a semantic question."* For a repo already in front of you, use your
+> normal tools.
+
+### Flagship example: debugging a prod regression from a stack trace
+
+Build `001` ran clean in production. You deploy `002` and start seeing `NullPointerException`s.
+Paste the stack trace to your AI client connected to CML:
+
+```
+java.lang.NullPointerException: Cannot invoke "Customer.getId()"
+        because the return value of "Order.getCustomer()" is null
+    at com.acme.payments.PaymentValidator.validate(PaymentValidator.java:9)
+    at com.acme.payments.PaymentService.process(PaymentService.java:34)
+```
+
+The agent — **without cloning either build** — can:
+
+1. **Parse the trace** to the top application frame: `PaymentValidator.validate`.
+2. **`diff_branches(002, 001)`** to see what changed between the deployed builds, and intersect the
+   result with the trace's frames. If `validate` shows up as **added** or **modified**, the failing
+   frame is new/changed code — the regression is in *this* deploy, not pre-existing logic.
+3. **`get_symbol_detail` / `find_references`** on the suspect symbol to read it and reason about the
+   null.
+
+Why CML beats `git diff` here: it needs **neither build checked out on your machine** (only indexed
+once, server-side), it **narrows** the diff to symbols on the failing path instead of dumping a full
+tree into the model, and the comparison is semantic, not textual.
+
+**Caveats (be honest):**
+- This requires both builds to be indexed as refs CML knows. Today indexing is keyed by **branch
+  name**; indexing arbitrary **tags/commit SHAs** as builds is proposed in
+  [`docs/proposals/2026-05-29-index-by-build-ref.md`](docs/proposals/2026-05-29-index-by-build-ref.md).
+- Full type-resolved precision needs **SCIP uploaded per build SHA** (see [Semantic Indexing](#semantic-indexing-scip)).
+- The symbol-level `diff_branches` is only as good as its parser; reach for `git diff` when you want
+  the authoritative file-level answer.
+
 ## Quick Start
 
 ### Prerequisites
