@@ -43,6 +43,7 @@ public class GitHubWebhookApi {
 
     private void handle(Context ctx) {
         String repoName = ctx.pathParam("repoName");
+        log.info("GitHub webhook delivery received: repo={}, event={}", repoName, ctx.header("X-GitHub-Event"));
 
         var optRepo = repositoryDao.findByName(repoName);
         if (optRepo.isEmpty()) {
