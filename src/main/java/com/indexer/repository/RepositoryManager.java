@@ -77,29 +77,24 @@ public class RepositoryManager {
             log.warn("Failed to install hooks for repository {}: {}", repoName, e.getMessage());
         }
 
-        String currentSha;
-        try {
-            currentSha = gitOperations.getCurrentSha(repoDir);
-        } catch (IOException e) {
-            log.warn("Could not determine current SHA for {}: {}", repoName, e.getMessage());
-            currentSha = null;
-        }
-
-        return upsertRepository(repoName, repoConfig, repoDir, creds, currentSha);
+        return upsertRepository(repoName, repoConfig, repoDir, creds);
     }
 
     private Repository upsertRepository(
             String repoName,
             IndexerConfig.RepositoryConfig repoConfig,
             Path repoDir,
-            GitCredentials creds,
-            String currentSha
+            GitCredentials creds
     ) {
         Optional<Repository> existing = repositoryDao.findByName(repoName);
         if (existing.isPresent()) {
             return existing.get();
         }
 
+        // A freshly cloned repo has not been indexed yet, so lastIndexedSha is null.
+        // This signals the boot loop (Application) to run a full index; fullIndex then
+        // records the current SHA. Seeding it with the clone's SHA here would make the
+        // repo look already-indexed and skip the initial index entirely.
         Repository newRepo = new Repository(
                 0,
                 repoName,
@@ -107,7 +102,7 @@ public class RepositoryManager {
                 repoConfig.branch(),
                 repoDir.toAbsolutePath().toString(),
                 creds.type().name(),
-                currentSha,
+                null,
                 null
         );
         int id = repositoryDao.insert(newRepo);
