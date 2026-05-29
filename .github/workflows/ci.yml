@@ -4,7 +4,13 @@ name: CI
 # every test (no tag exclusion), so `./gradlew build` compiles and runs the whole
 # suite — including the @Tag("integration")/@Tag("e2e") Testcontainers tests, which
 # spin up PostgreSQL via Docker. ubuntu-latest ships Docker, so no extra service
-# setup is needed. This is the same command the work is validated with locally.
+# setup is needed.
+#
+# The HTTP-server tests construct a Javalin app whose static-file + SPA handlers
+# point at admin-ui/dist via Location.EXTERNAL, and Javalin validates that the
+# directory exists at construction time. admin-ui/dist is a gitignored build
+# artifact, so we build the admin UI first (exactly as the production Docker image
+# does) — otherwise every HTTP-starting test throws JavalinException.
 on:
   pull_request:
     branches: [main]
@@ -31,6 +37,21 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4   # dependency + build cache
+
+      # Build the admin UI into admin-ui/dist so the Javalin static-file/SPA handlers
+      # resolve at app construction (see header note). Mirrors the Docker prod build.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+
+      - name: Build admin UI
+        working-directory: admin-ui
+        run: |
+          npm ci
+          npm run build
 
       # Compiles, runs the full test suite (unit + Testcontainers integration + e2e),
       # and assembles. Testcontainers reaches the runner's Docker daemon automatically.
