@@ -106,7 +106,7 @@ On first boot: clones all configured repos, runs Flyway migrations, performs ful
 - **Streamable HTTP** — available at `http://localhost:8080/mcp` for remote connections (MCP spec 2025-03-26)
 - **Webhook** — available at `http://localhost:8080/webhook` for git hook events
 
-All three are served from the single `httpPort` (default 8080).
+All three are served from the single `httpPort` (default 8080). The HTTP server accepts request bodies up to **50 MB** (Javalin `maxRequestSize`), sized to cover large GitHub webhook payloads (GitHub caps webhooks at 25 MB) and SCIP uploads (≤50 MB); larger requests are rejected with 413.
 
 ### 4. Configure Claude Code to use this MCP server
 
