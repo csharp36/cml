@@ -1366,68 +1366,99 @@ public class QueryExecutor {
 
     private Map<String, Object> diffSymbols(org.jdbi.v3.core.Handle handle, int repoId,
                                              String branchA, String branchB, int limit) {
-        var rows = handle.createQuery("""
-                WITH effective_a AS (
-                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
-                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branchA, 'main')
-                    ORDER BY f.path, CASE WHEN f.branch = :branchA THEN 0 ELSE 1 END
-                ),
-                effective_b AS (
-                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
-                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branchB, 'main')
-                    ORDER BY f.path, CASE WHEN f.branch = :branchB THEN 0 ELSE 1 END
-                ),
-                syms_a AS (
-                    SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, ea.path AS file_path
-                    FROM symbols s JOIN effective_a ea ON s.file_id = ea.file_id
-                ),
-                syms_b AS (
-                    SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, eb.path AS file_path
-                    FROM symbols s JOIN effective_b eb ON s.file_id = eb.file_id
-                )
-                SELECT a.file_path AS a_file, a.name AS a_name, a.kind AS a_kind,
-                       a.signature AS a_sig, a.start_line AS a_start, a.end_line AS a_end,
-                       b.file_path AS b_file, b.name AS b_name, b.kind AS b_kind,
-                       b.signature AS b_sig, b.start_line AS b_start, b.end_line AS b_end
-                FROM syms_a a
-                FULL OUTER JOIN syms_b b ON a.file_path = b.file_path AND a.name = b.name AND a.kind = b.kind
-                WHERE a.name IS NULL OR b.name IS NULL
-                   OR a.signature IS DISTINCT FROM b.signature OR a.start_line != b.start_line OR a.end_line != b.end_line
-                LIMIT :limit
-                """)
-                .bind("repoId", repoId)
-                .bind("branchA", branchA)
-                .bind("branchB", branchB)
-                .bind("limit", limit)
-                .mapToMap()
-                .list();
+        // Fetch the effective symbol set for each branch (branch files overlay main).
+        // We diff in Java keyed by a full fingerprint (file+name+kind+signature) so that
+        // overloaded / same-named symbols don't cartesian-explode the way a name-only
+        // SQL self-join does. A symbol whose signature is unchanged contributes the same
+        // fingerprint to both branches and simply cancels out.
+        var aRows = fetchEffectiveSymbols(handle, repoId, branchA);
+        var bRows = fetchEffectiveSymbols(handle, repoId, branchB);
+
+        var aByFp = new LinkedHashMap<String, Map<String, Object>>();
+        for (var r : aRows) aByFp.putIfAbsent(symbolFingerprint(r), r);
+        var bByFp = new LinkedHashMap<String, Map<String, Object>>();
+        for (var r : bRows) bByFp.putIfAbsent(symbolFingerprint(r), r);
+
+        // Fingerprints present in exactly one branch.
+        var onlyA = new java.util.ArrayList<Map<String, Object>>();
+        for (var e : aByFp.entrySet()) if (!bByFp.containsKey(e.getKey())) onlyA.add(e.getValue());
+        var onlyB = new java.util.ArrayList<Map<String, Object>>();
+        for (var e : bByFp.entrySet()) if (!aByFp.containsKey(e.getKey())) onlyB.add(e.getValue());
+
+        // Index the B-only rows by (file, name, kind) so a B-only symbol whose name also
+        // appears among the A-only rows can be paired up as a *modification* rather than
+        // double-counted as an add + a remove.
+        var onlyBByNameKey = new LinkedHashMap<String, java.util.List<Map<String, Object>>>();
+        for (var r : onlyB) onlyBByNameKey.computeIfAbsent(symbolNameKey(r), k -> new java.util.ArrayList<>()).add(r);
 
         var added = new java.util.ArrayList<Map<String, Object>>();
         var removed = new java.util.ArrayList<Map<String, Object>>();
         var modified = new java.util.ArrayList<Map<String, Object>>();
+        var consumedB = new java.util.HashSet<Map<String, Object>>();
 
-        for (var row : rows) {
-            if (row.get("b_name") == null) {
-                added.add(Map.of(
-                        "name", row.get("a_name"), "kind", row.get("a_kind"),
-                        "file_path", row.get("a_file"), "signature", nullSafeObj(row.get("a_sig"))));
-            } else if (row.get("a_name") == null) {
-                removed.add(Map.of(
-                        "name", row.get("b_name"), "kind", row.get("b_kind"),
-                        "file_path", row.get("b_file"), "signature", nullSafeObj(row.get("b_sig"))));
-            } else {
-                var entry = new LinkedHashMap<String, Object>();
-                entry.put("name", row.get("a_name"));
-                entry.put("kind", row.get("a_kind"));
-                entry.put("file_path", row.get("a_file"));
-                entry.put("branch_a_signature", nullSafeObj(row.get("a_sig")));
-                entry.put("branch_b_signature", nullSafeObj(row.get("b_sig")));
-                modified.add(entry);
+        for (var a : onlyA) {
+            var candidates = onlyBByNameKey.get(symbolNameKey(a));
+            Map<String, Object> partner = null;
+            if (candidates != null) {
+                for (var b : candidates) {
+                    if (!consumedB.contains(b)) { partner = b; break; }
+                }
             }
+            if (partner != null) {
+                consumedB.add(partner);
+                var entry = new LinkedHashMap<String, Object>();
+                entry.put("name", a.get("name"));
+                entry.put("kind", a.get("kind"));
+                entry.put("file_path", a.get("file_path"));
+                entry.put("branch_a_signature", nullSafeObj(a.get("signature")));
+                entry.put("branch_b_signature", nullSafeObj(partner.get("signature")));
+                modified.add(entry);
+            } else {
+                added.add(Map.of(
+                        "name", a.get("name"), "kind", a.get("kind"),
+                        "file_path", a.get("file_path"), "signature", nullSafeObj(a.get("signature"))));
+            }
+        }
+        for (var b : onlyB) {
+            if (consumedB.contains(b)) continue;
+            removed.add(Map.of(
+                    "name", b.get("name"), "kind", b.get("kind"),
+                    "file_path", b.get("file_path"), "signature", nullSafeObj(b.get("signature"))));
         }
 
         return Map.of("detail", "symbols", "branch_a", branchA, "branch_b", branchB,
-                "added", added, "removed", removed, "modified", modified);
+                "added", capList(added, limit), "removed", capList(removed, limit),
+                "modified", capList(modified, limit));
+    }
+
+    private java.util.List<Map<String, Object>> fetchEffectiveSymbols(org.jdbi.v3.core.Handle handle,
+                                                                       int repoId, String branch) {
+        return handle.createQuery("""
+                WITH effective AS (
+                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
+                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branch, 'main')
+                    ORDER BY f.path, CASE WHEN f.branch = :branch THEN 0 ELSE 1 END
+                )
+                SELECT e.path AS file_path, s.name, s.kind, s.signature, s.start_line, s.end_line
+                FROM symbols s JOIN effective e ON s.file_id = e.file_id
+                """)
+                .bind("repoId", repoId)
+                .bind("branch", branch)
+                .mapToMap()
+                .list();
+    }
+
+    private static String symbolFingerprint(Map<String, Object> r) {
+        return r.get("file_path") + " " + r.get("name") + " "
+                + r.get("kind") + " " + nullSafeObj(r.get("signature"));
+    }
+
+    private static String symbolNameKey(Map<String, Object> r) {
+        return r.get("file_path") + " " + r.get("name") + " " + r.get("kind");
+    }
+
+    private static <T> java.util.List<T> capList(java.util.List<T> list, int limit) {
+        return list.size() > limit ? list.subList(0, limit) : list;
     }
 
     private static Object nullSafeObj(Object val) {
