@@ -200,6 +200,18 @@ public class Application {
             httpServer.addRoutes(adminApi::registerRoutes);
             httpServer.addRoutes(scipApi::registerRoutes);
 
+            // GitHub webhook receiver — map repoName -> per-repo webhook secret
+            var webhookSecrets = new java.util.HashMap<String, String>();
+            for (var rc : config.repositories()) {
+                if (rc.webhookSecret() != null && !rc.webhookSecret().isBlank()) {
+                    webhookSecrets.put(repoManager.extractRepoName(rc.url()), rc.webhookSecret());
+                }
+            }
+            var githubWebhookApi = new com.indexer.webhook.GitHubWebhookApi(
+                    webhookSecrets, repositoryDao, eventDao, auditSink);
+            httpServer.addRoutes(githubWebhookApi::registerRoutes);
+            log.info("GitHub webhook receiver enabled for {} repo(s)", webhookSecrets.size());
+
             // 7. Initialize MCP servers before starting HTTP (transport must be ready before accepting connections)
             mcpServer = new McpServerBootstrap(queryExecutor);
             mcpServer.startStdio();
