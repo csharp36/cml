@@ -1,0 +1,6 @@
+# Code owners for cml. Listed owners are requested for review automatically on
+# PRs that touch matching paths. (Owner review is not *required* by branch
+# protection today, so this drives review requests without blocking solo merges.)
+
+# Default owner for everything in the repo.
+* @csharp36
