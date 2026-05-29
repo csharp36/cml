@@ -124,7 +124,8 @@ public class ConfigLoader {
         String url = textOrNull(node, "url");
         String branch = textOrNull(node, "branch");
         IndexerConfig.AuthConfig auth = parseAuth(node.get("auth"));
-        return new IndexerConfig.RepositoryConfig(url, branch, auth);
+        String webhookSecret = textOrNull(node, "webhookSecret");
+        return new IndexerConfig.RepositoryConfig(url, branch, auth, webhookSecret);
     }
 
     /**

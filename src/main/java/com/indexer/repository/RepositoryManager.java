@@ -135,7 +135,7 @@ public class RepositoryManager {
     }
 
     public Repository addRepository(String url, String branch, IndexerConfig.AuthConfig authConfig, Path baseDir) throws IOException {
-        var repoConfig = new IndexerConfig.RepositoryConfig(url, branch, authConfig);
+        var repoConfig = new IndexerConfig.RepositoryConfig(url, branch, authConfig, null);
         return initializeRepository(repoConfig, baseDir);
     }
 

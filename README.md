@@ -220,6 +220,28 @@ A portable wrapper script auto-detects the language and uploads:
 
 See [`docs/ci-pipeline-guide.md`](docs/ci-pipeline-guide.md) for GitHub Actions, GitLab CI, and generic examples.
 
+## GitHub Webhook (live main-branch sync)
+
+Keep a repo's index in sync automatically when changes merge to its configured branch. Add a per-repo signing secret to config:
+
+```yaml
+repositories:
+  - url: git@github.com:your-org/your-repo.git
+    branch: main
+    auth:
+      type: ssh-key
+      keyPath: ~/.ssh/id_ed25519
+    webhookSecret: ${REPO_WEBHOOK_SECRET}   # HMAC-SHA256 shared secret
+```
+
+Then in the repo on GitHub: **Settings → Webhooks → Add webhook**
+- **Payload URL:** `https://<cml-host>/webhook/github/<repoName>`
+- **Content type:** `application/json`
+- **Secret:** the same value as `webhookSecret`
+- **Events:** "Just the push event"
+
+On a verified push to the configured branch, CML returns `202` and enqueues an indexing event; the index updates asynchronously via the event queue. Pushes to other branches and non-push events (e.g. `ping`) are accepted but ignored. Repos without a `webhookSecret` reject webhook deliveries (fail-closed).
+
 ## Authentication & Audit
 
 The remote MCP/HTTP endpoint and admin/SCIP APIs are authenticated:

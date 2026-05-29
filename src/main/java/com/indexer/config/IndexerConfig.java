@@ -41,11 +41,12 @@ public record IndexerConfig(
         }
     }
 
-    public record RepositoryConfig(String url, String branch, AuthConfig auth) {
+    public record RepositoryConfig(String url, String branch, AuthConfig auth, String webhookSecret) {
         public RepositoryConfig {
             if (url == null) throw new ConfigValidationException("repository.url is required");
             if (branch == null) branch = "main";
             if (auth == null) throw new ConfigValidationException("repository.auth is required");
+            // webhookSecret is optional (null when no GitHub webhook is configured)
         }
     }
 

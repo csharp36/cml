@@ -27,6 +27,7 @@ Claude Code <--MCP/stdio|HTTP--> MCP Server
 
 - **MCP Server:** Exposes 13 tools (11 query + 1 health + 1 sync check). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
 - **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port (`/webhook`). Inserts events into PostgreSQL queue.
+- **GitHub Webhook:** `POST /webhook/github/{repoName}` — receives GitHub push events, authenticates via per-repo `webhookSecret` config field (HMAC-SHA256, `X-Hub-Signature-256`). On a verified push to the repo's configured branch, enqueues an indexing event handled by the existing poller. Feature-branch pushes and non-push events (e.g. `ping`) are accepted but ignored. Fail-closed: repos without a `webhookSecret` reject all deliveries.
 - **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
 - **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
 - **AuthProvider:** Pluggable interface supporting SSH, tokens, OAuth2, mTLS, Kerberos, GCM, Vault, AWS/GCP secret managers.
