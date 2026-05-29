@@ -37,6 +37,7 @@ class GitHubWebhookApiIntegrationTest {
 
     private HttpServer httpServer;
     private EventDao eventDao;
+    private RepositoryDao repositoryDao;
     private HttpClient client;
     private String baseUrl;
 
@@ -50,7 +51,7 @@ class GitHubWebhookApiIntegrationTest {
             h.execute("DELETE FROM repositories");
         });
 
-        var repositoryDao = new RepositoryDao(jdbi);
+        repositoryDao = new RepositoryDao(jdbi);
         eventDao = new EventDao(jdbi);
         // Seed an indexed repo named "cml" on branch "main".
         repositoryDao.insert(new Repository(0, "cml", "git@github.com:org/cml.git",
@@ -128,5 +129,33 @@ class GitHubWebhookApiIntegrationTest {
         String body = "{\"ref\":\"refs/heads/main\",\"before\":\"old\",\"after\":\"new\"}";
         var resp = post("/webhook/github/unknown", body, "push", sign(body));
         assertThat(resp.statusCode()).isEqualTo(404);
+    }
+
+    @Test
+    void configuredRepoWithoutSecretReturns401() throws Exception {
+        // Repo exists in the DB but has no entry in the webhook-secret map -> fail-closed 401.
+        repositoryDao.insert(new Repository(0, "nosecret", "git@github.com:org/nosecret.git",
+                "main", "/tmp/nosecret", "SSH_KEY", "abc", null));
+        String body = "{\"ref\":\"refs/heads/main\",\"before\":\"old\",\"after\":\"new\",\"repository\":{\"name\":\"nosecret\"}}";
+        var resp = post("/webhook/github/nosecret", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(401);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
+    }
+
+    @Test
+    void malformedJsonReturns400() throws Exception {
+        String body = "{not valid json";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(400);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
+    }
+
+    @Test
+    void branchDeletionIsNoOp() throws Exception {
+        String body = "{\"ref\":\"refs/heads/main\",\"before\":\"old\","
+                + "\"after\":\"0000000000000000000000000000000000000000\",\"repository\":{\"name\":\"cml\"}}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
     }
 }
