@@ -141,6 +141,53 @@ class ConfigLoaderTest {
                 .doesNotContain("~");
     }
 
+    @Test
+    void parsesPerRepoWebhookSecret() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                repositories:
+                  - url: git@github.com:org/myrepo.git
+                    branch: main
+                    auth:
+                      type: ssh-key
+                      keyPath: /k
+                    webhookSecret: ${HOOK_SECRET}
+                """;
+        ConfigLoader loader = new ConfigLoader(v -> "HOOK_SECRET".equals(v) ? "s3cr3t" : null);
+        IndexerConfig config = loader.load(toStream(yaml));
+
+        assertThat(config.repositories().get(0).webhookSecret()).isEqualTo("s3cr3t");
+    }
+
+    @Test
+    void webhookSecretIsNullWhenOmitted() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                repositories:
+                  - url: git@github.com:org/myrepo.git
+                    branch: main
+                    auth:
+                      type: token
+                      token: t
+                """;
+        ConfigLoader loader = new ConfigLoader();
+        IndexerConfig config = loader.load(toStream(yaml));
+
+        assertThat(config.repositories().get(0).webhookSecret()).isNull();
+    }
+
     private InputStream toStream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }

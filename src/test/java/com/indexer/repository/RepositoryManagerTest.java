@@ -32,7 +32,7 @@ class RepositoryManagerTest {
     void freshCloneInsertsRepoWithNullLastIndexedSha(@TempDir Path baseDir) {
         var auth = new IndexerConfig.AuthConfig("token", Map.of("token", "ghp_x"));
         var repoConfig = new IndexerConfig.RepositoryConfig(
-                "https://github.com/org/myrepo.git", "main", auth);
+                "https://github.com/org/myrepo.git", "main", auth, null);
         var server = new IndexerConfig.ServerConfig(baseDir.toString(), 1_048_576, 4, 8080);
         var database = new IndexerConfig.DatabaseConfig("localhost", 5432, "db", "u", "p");
         var config = new IndexerConfig(server, database, List.of(repoConfig), null, null, null, null);
