@@ -1,0 +1,61 @@
+name: SCIP Upload
+
+# Keeps the indexer's *semantic* layer (SCIP) in lockstep with its *structural*
+# layer. The indexer's GitHub webhook re-runs tree-sitter on every push to main
+# (updating last_indexed_sha); this job regenerates and re-uploads SCIP for the
+# same commit so scip_sha == last_indexed_sha and get_index_health reports `fresh`.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}   # allow manual re-upload (e.g. after fixing a stale repo)
+
+# A newer commit's SCIP should win. Cancel an in-flight upload for an older SHA
+# rather than racing it — last writer wins anyway, this just avoids wasted work.
+concurrency:
+  group: scip-upload-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scip-upload:
+    runs-on: ubuntu-latest        # see note: must reach SCIP_SERVER (self-hosted if indexer is internal)
+    timeout-minutes: 20           # scip-java does a full compile; cml indexes in ~minutes
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1          # HEAD only; X-Git-SHA = git rev-parse HEAD = the pushed main commit
+
+      # cml is Java 21 / Gradle (Kotlin DSL). scip-java forks its own Gradle build
+      # (scipCompileAll), so it needs the same JDK the project compiles with.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4   # dependency + build cache
+
+      - name: Install scip-java (coursier)
+        run: |
+          set -euo pipefail
+          # scip-java is NOT in coursier's default app channel, so `cs install scip-java`
+          # fails. Use a standalone bootstrap launcher (the documented CI method) instead.
+          curl -fL https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-linux.gz | gzip -d > cs
+          chmod +x cs
+          mkdir -p "$HOME/bin"
+          ./cs bootstrap --standalone -o "$HOME/bin/scip-java" \
+            --main-class com.sourcegraph.scip_java.ScipJava \
+            com.sourcegraph:scip-java_2.13:0.12.3
+          rm cs
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/scip-java" version   # fail loudly here if the launcher is broken
+
+      # scip-upload.sh auto-detects Java (build.gradle.kts present), runs
+      # `scip-java index --output index.scip`, then POSTs to /api/scip/<repo>
+      # with X-Git-SHA = HEAD. --fail-on-error makes a bad upload fail the job.
+      - name: Generate and upload SCIP
+        run: ./scripts/scip-upload.sh --fail-on-error
+        env:
+          SCIP_SERVER: ${{ secrets.SCIP_SERVER }}
+          SCIP_REPO: ${{ github.event.repository.name }}   # = "cml"
+          SCIP_API_KEY: ${{ secrets.SCIP_API_KEY }}         # key with scipUpload: true (CI_UPLOAD_KEY)
