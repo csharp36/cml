@@ -1,0 +1,59 @@
+name: CI
+
+# Build + full test gate for pull requests. The project's `test` task discovers
+# every test (no tag exclusion), so `./gradlew build` compiles and runs the whole
+# suite — including the @Tag("integration")/@Tag("e2e") Testcontainers tests, which
+# spin up PostgreSQL via Docker. ubuntu-latest ships Docker, so no extra service
+# setup is needed.
+#
+# The HTTP-server tests construct a Javalin app whose static-file + SPA handlers
+# point at admin-ui/dist via Location.EXTERNAL, and Javalin validates that the
+# directory exists at construction time. admin-ui/dist is a gitignored build
+# artifact, so we build the admin UI first (exactly as the production Docker image
+# does) — otherwise every HTTP-starting test throws JavalinException.
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}   # allow manual re-run
+
+# Newer pushes to a PR supersede in-flight runs for that PR — cancel the stale one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20     # Testcontainers pulls postgres:16 on a cold cache
+    steps:
+      - uses: actions/checkout@v4
+
+      # Java 21 / Gradle (Kotlin DSL), matching the toolchain in build.gradle.kts.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4   # dependency + build cache
+
+      # Build the admin UI into admin-ui/dist so the Javalin static-file/SPA handlers
+      # resolve at app construction (see header note). Mirrors the Docker prod build.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+
+      - name: Build admin UI
+        working-directory: admin-ui
+        run: |
+          npm ci
+          npm run build
+
+      # Compiles, runs the full test suite (unit + Testcontainers integration + e2e),
+      # and assembles. Testcontainers reaches the runner's Docker daemon automatically.
+      - name: Build and test
+        run: ./gradlew build --no-daemon
