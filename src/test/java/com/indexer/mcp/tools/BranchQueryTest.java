@@ -5,6 +5,7 @@ import com.indexer.mcp.QueryExecutor;
 import com.indexer.model.Repository;
 import com.indexer.model.SourceFile;
 import com.indexer.model.Symbol;
+import org.jdbi.v3.core.Jdbi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,8 @@ class BranchQueryTest {
 
     private QueryExecutor queryExecutor;
     private int repoId;
+    private FileDao fileDao;
+    private SymbolDao symbolDao;
 
     @BeforeEach
     void setUp() {
@@ -47,8 +50,8 @@ class BranchQueryTest {
         var repoDao = new RepositoryDao(jdbi);
         repoId = repoDao.insert(new Repository(0, "test-repo", "url", "main", "/path", "ssh-key", "abc", Instant.now()));
 
-        var fileDao = new FileDao(jdbi);
-        var symbolDao = new SymbolDao(jdbi);
+        fileDao = new FileDao(jdbi);
+        symbolDao = new SymbolDao(jdbi);
 
         // Main branch: src/App.java with class App, methods run + helper
         int mainAppFileId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/App.java", "java", 500, "abc", Instant.now()));
@@ -125,6 +128,62 @@ class BranchQueryTest {
         var results = queryExecutor.searchFiles("src/Utils.java", null, null, "feature/new-auth", 20);
         assertThat(results).hasSize(1);
         assertThat(results.get(0).get("path")).isEqualTo("src/Utils.java");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void diffBranchesModifiedHasNoFalsePositivesForOverloadedSymbols() {
+        // main: a file with two OVERLOADED methods — same (file, name, kind), different signatures.
+        int overFileId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/Over.java", "java", 400, "abc", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, overFileId, "Over", "class", "public class Over", 1, 12, null, "public", false));
+        symbolDao.insertSymbol(new Symbol(0, overFileId, "process", "method", "void process(int x)", 3, 5, null, "public", false));
+        symbolDao.insertSymbol(new Symbol(0, overFileId, "process", "method", "void process(String x)", 6, 8, null, "public", false));
+
+        // feature branch: one genuinely added file. Over.java is unchanged (branch sees it via overlay).
+        int addedFileId = fileDao.upsert(new SourceFile(0, repoId, "feature/diff", "src/Added.java", "java", 100, "zzz", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, addedFileId, "Added", "class", "public class Added", 1, 4, null, "public", false));
+
+        var result = queryExecutor.diffBranches("test-repo", "feature/diff", "main", "symbols", 100);
+        var added = (List<Map<String, Object>>) result.get("added");
+        var removed = (List<Map<String, Object>>) result.get("removed");
+        var modified = (List<Map<String, Object>>) result.get("modified");
+
+        // The genuinely-new class is detected as added.
+        assertThat(added).anyMatch(s -> "Added".equals(s.get("name")));
+        // Nothing was removed.
+        assertThat(removed).isEmpty();
+        // The unchanged file with overloaded methods must NOT produce phantom "modified" entries.
+        assertThat(modified)
+                .as("overloaded symbols identical on both branches must not appear as modified")
+                .isEmpty();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void diffBranchesDetectsGenuineSignatureChangeAsModified() {
+        // main: src/Svc.java with process(int x)
+        int mainSvc = fileDao.upsert(new SourceFile(0, repoId, "main", "src/Svc.java", "java", 200, "abc", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, mainSvc, "Svc", "class", "public class Svc", 1, 10, null, "public", false));
+        symbolDao.insertSymbol(new Symbol(0, mainSvc, "process", "method", "void process(int x)", 3, 5, null, "public", false));
+
+        // feature branch: branch copy of src/Svc.java where process signature changed to (long x)
+        int brSvc = fileDao.upsert(new SourceFile(0, repoId, "feature/sig", "src/Svc.java", "java", 200, "def", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, brSvc, "Svc", "class", "public class Svc", 1, 10, null, "public", false));
+        symbolDao.insertSymbol(new Symbol(0, brSvc, "process", "method", "void process(long x)", 3, 5, null, "public", false));
+
+        var result = queryExecutor.diffBranches("test-repo", "feature/sig", "main", "symbols", 100);
+        var added = (List<Map<String, Object>>) result.get("added");
+        var removed = (List<Map<String, Object>>) result.get("removed");
+        var modified = (List<Map<String, Object>>) result.get("modified");
+
+        // The changed method is reported once as modified, with both signatures...
+        assertThat(modified).anyMatch(s ->
+                "process".equals(s.get("name"))
+                        && "void process(long x)".equals(s.get("branch_a_signature"))
+                        && "void process(int x)".equals(s.get("branch_b_signature")));
+        // ...and not double-counted as add + remove.
+        assertThat(added).noneMatch(s -> "process".equals(s.get("name")));
+        assertThat(removed).noneMatch(s -> "process".equals(s.get("name")));
     }
 
     @Test
