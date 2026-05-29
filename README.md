@@ -2,10 +2,10 @@
 
 An MCP server that indexes source code repositories into PostgreSQL, providing structural code intelligence to any LLM via the [Model Context Protocol](https://modelcontextprotocol.io).
 
-CML parses your codebase with [Tree-sitter](https://tree-sitter.github.io/tree-sitter/), extracts symbols, imports, and type relationships, and exposes them through 11 token-efficient query tools. Any MCP-compatible AI client (Claude Code, Codex, Cursor, etc.) can search symbols, trace implementations, full-text search code, and check sync status — across multiple repos and branches.
+CML parses your codebase with [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for structural symbols and ingests [SCIP](https://github.com/sourcegraph/scip) for type-resolved semantics, then exposes them through 17 token-efficient query tools. Any MCP-compatible AI client (Claude Code, Codex, Cursor, etc.) can search symbols, trace implementations and type hierarchies, full-text search code, diff branches, and check sync status — across multiple repos and branches.
 
 ```
-AI Client <--MCP/stdio|SSE--> CML Server
+AI Client <--MCP/stdio|HTTP--> CML Server
                                   |
                        +----------+----------+
                        |                     |
@@ -13,17 +13,20 @@ AI Client <--MCP/stdio|SSE--> CML Server
                        |                     |        \
                  Git Clones ---hooks--> Webhook --> PostgreSQL
                        |                         (index + event queue)
-                 AuthProvider
+                 AuthProvider                    SCIP upload (CI/CD)
                   (pluggable)
 ```
 
 ## Features
 
-- **11 MCP tools** — symbol search, code search, file search, implementation finder, reference finder, repo/file summaries, directory trees, health checks, sync detection
+- **17 MCP tools** — symbol/code/file search, implementation & reference finders, repo/file summaries, directory trees, health checks, sync detection, type hierarchies, symbol relationships, branch diff/search, and audit-log queries
 - **Branch-aware indexing** — copy-on-write model: main is fully indexed, feature branches store only their delta. Auto-indexed on push, TTL cleanup, synchronous fault-in on first query
 - **Tree-sitter parsing** — structural extraction for Java, Python, TypeScript/JavaScript, Go, and C. Regex fallback for other languages
+- **SCIP semantic layer** — CI/CD pipelines upload [SCIP](https://github.com/sourcegraph/scip) protobuf for type-resolved symbols and relationships, powering `get_type_hierarchy` and `get_symbol_references`. Per-repo freshness tracking (`fresh`/`stale`/`unavailable`)
 - **Pluggable auth** — SSH keys, tokens, Git Credential Manager out of the box. Interface supports Vault, mTLS, Kerberos, OAuth2, AWS/GCP secret managers
-- **Dual MCP transport** — stdio (local subprocess) and SSE (remote connections) run simultaneously
+- **MCP endpoint security** — API keys (with scoped permissions: read-only, SCIP upload, audit reader) and OAuth2/JWT bearer-token validation
+- **Tamper-evident audit log** — hash-chained record of every query, queryable via MCP and verifiable for integrity
+- **Dual MCP transport** — stdio (local subprocess) and Streamable HTTP (remote connections) run simultaneously
 - **Admin API + UI** — REST endpoints + React dashboard for repo management, event monitoring, and health checks
 - **Enterprise-ready** — stateless design, multi-instance safe (SKIP LOCKED event queue), PostgreSQL-backed
 
@@ -74,6 +77,18 @@ repositories:
 admin:
   token: ${ADMIN_TOKEN}
 
+# API keys for the remote MCP/HTTP endpoint and CI SCIP uploads.
+# A key with no extra flags is read-only (query tools only).
+auth:
+  apiKeys:
+    - key: ${MCP_API_KEY}
+      id: readonly
+      name: Read-Only Access
+    - key: ${CI_UPLOAD_KEY}
+      id: ci-pipeline
+      name: CI Pipeline
+      scipUpload: true
+
 branches:
   autoIndex: true
   ttlDays: 14
@@ -87,10 +102,11 @@ EOF
 git clone https://github.com/csharp36/cml.git
 cd cml
 export DB_PASSWORD=changeme ADMIN_TOKEN=your-secret
+export MCP_API_KEY=local-readonly-key CI_UPLOAD_KEY=local-ci-key
 ./gradlew run
 ```
 
-On first boot: clones configured repos, runs migrations, performs full index, starts MCP server (stdio + SSE) and admin UI.
+On first boot: clones configured repos, runs migrations, performs full index, starts MCP server (stdio + Streamable HTTP) and admin UI.
 
 ### 4. Connect your AI client
 
@@ -106,15 +122,21 @@ On first boot: clones configured repos, runs migrations, performs full index, st
 }
 ```
 
-**Any MCP client (remote/SSE):**
+**Any MCP client (remote/Streamable HTTP):**
 ```json
 {
   "cml": {
-    "type": "sse",
-    "url": "http://localhost:8080/mcp"
+    "type": "http",
+    "url": "http://localhost:8080/mcp",
+    "headers": {
+      "Authorization": "Bearer ${MCP_API_KEY}"
+    }
   }
 }
 ```
+
+The `/mcp` endpoint requires authentication — pass an API key (see `auth.apiKeys` in
+your config) or an OAuth2 bearer token. A read-only key is enough for the query tools.
 
 ### 5. Query your code
 
@@ -147,10 +169,18 @@ Starts both CML and PostgreSQL. Mount your config and SSH keys as volumes.
 | `get_repo_summary` | Repository overview | File count, language breakdown |
 | `get_file_summary` | File structure without content | Symbols, imports |
 | `get_directory_tree` | Directory listing | Nested structure with types |
-| `get_index_health` | System health check | Per-repo status, queue state |
+| `get_index_health` | System health check | Per-repo status, queue state, SCIP staleness |
 | `check_sync` | Compare local HEAD with index | Sync status, recommended action |
+| `get_type_hierarchy` | Type hierarchy from SCIP data | Supertypes/subtypes (recursive tree) |
+| `get_symbol_references` | Symbol relationships from SCIP data | Flat list of related symbols |
+| `diff_branches` | Compare two branches | Files/symbols added, removed, changed |
+| `search_branches` | Search symbols across many branches | Matches grouped by branch |
+| `query_audit_log` | Query the tamper-evident audit log | Filtered audit events |
+| `verify_audit_chain` | Verify audit-log integrity | Hash-chain validation result |
 
-All tools except `get_index_health` accept an optional `branch` parameter for branch-aware queries.
+Tools that operate on indexed code accept an optional `branch` parameter for branch-aware
+queries. The SCIP (`get_type_hierarchy`, `get_symbol_references`), health, and audit tools
+operate at the repo level and don't take a `branch`.
 
 ## Branch Support
 
@@ -163,6 +193,45 @@ CML uses a copy-on-write model for branch indexing:
 - **Fault-in** — expired branches are re-indexed synchronously on first query (1-2 seconds)
 
 When querying a feature branch, pass `branch: "feature/my-branch"` to any tool. CML merges the branch delta with main transparently.
+
+## Semantic Indexing (SCIP)
+
+Tree-sitter gives fast structural symbols; [SCIP](https://github.com/sourcegraph/scip) adds
+type-resolved semantics (precise supertype/subtype and cross-symbol relationships). CI/CD
+pipelines generate a SCIP index and upload it:
+
+```
+POST /api/scip/{repoName}
+Authorization: Bearer <api-key-with-scipUpload>
+X-Git-SHA: <commit-sha>
+Content-Type: application/x-protobuf
+Body: raw SCIP protobuf bytes
+```
+
+Each upload replaces the repo's SCIP data and powers the `get_type_hierarchy` and
+`get_symbol_references` tools. `get_index_health` reports per-repo SCIP freshness:
+`fresh` (matches indexed SHA), `stale` (behind), or `unavailable` (never uploaded).
+
+A portable wrapper script auto-detects the language and uploads:
+
+```bash
+./scripts/scip-upload.sh --server http://localhost:8080 --repo my-repo --api-key "$KEY"
+```
+
+See [`docs/ci-pipeline-guide.md`](docs/ci-pipeline-guide.md) for GitHub Actions, GitLab CI, and generic examples.
+
+## Authentication & Audit
+
+The remote MCP/HTTP endpoint and admin/SCIP APIs are authenticated:
+
+- **API keys** (`auth.apiKeys`) — bearer tokens with scoped permissions. A bare key is
+  read-only (query tools); `scipUpload: true` allows SCIP uploads; `auditReader: true`
+  allows audit-log queries.
+- **OAuth2 / JWT** (`auth.oauth`) — validate bearer tokens against a JWKS endpoint, with
+  optional issuer/audience checks and group-based repo permissions.
+- **Audit log** — every query is appended to a hash-chained, tamper-evident audit log in
+  PostgreSQL. Query it with `query_audit_log` and verify chain integrity with
+  `verify_audit_chain` (both require an `auditReader` key).
 
 ## Admin API
 
@@ -196,6 +265,9 @@ Admin UI dashboard available at `http://localhost:8080/admin/ui/`.
 
 # Integration tests (requires Docker for Testcontainers)
 ./gradlew integrationTest
+
+# End-to-end tests
+./gradlew e2eTest
 ```
 
 ### Admin UI development
@@ -215,19 +287,24 @@ cd admin-ui && npm run dev
 ```
 src/main/java/com/indexer/
   config/          Config loading, language registry
-  db/              DAOs (Repository, File, Symbol, Event, BranchIndex)
+  db/              DAOs (Repository, File, Symbol, Event, BranchIndex, SCIP)
   model/           Records (Repository, SourceFile, Symbol, BranchIndex, ...)
   mcp/             MCP server, QueryExecutor, tool registration
   indexing/        FileIndexer, IndexingPipeline, Tree-sitter integration
   repository/      GitOperations, RepositoryManager, HookInstaller
   queue/           EventQueuePoller, deduplication
-  server/          Javalin HTTP server (webhook + SSE + admin + UI)
+  server/          Javalin HTTP server (webhook + Streamable HTTP + admin + UI)
   admin/           Admin API and service
-  auth/            Pluggable auth providers
+  auth/            Pluggable auth providers, API key & JWT validation
+  scip/            SCIP protobuf parsing, upload API, semantic queries
+  audit/           Hash-chained tamper-evident audit log
   webhook/         Webhook payload handling
+  util/            Shared helpers (path expansion, ...)
 
 admin-ui/          React SPA (Vite + shadcn/ui + TanStack Query)
+scripts/           SCIP upload CLI wrapper
 skills/            Claude Code skills (connect-index)
+docs/              Design specs and CI pipeline guide
 ```
 
 ## Auth Providers
@@ -243,10 +320,12 @@ Additional providers (Vault, OAuth2, mTLS, Kerberos, AWS/GCP secret managers) ca
 ## Tech Stack
 
 - **Java 21** + Gradle (Kotlin DSL)
-- **PostgreSQL 16** — index storage, event queue, full-text search
+- **PostgreSQL 16** — index storage, event queue, full-text search, audit log
 - **Tree-sitter** via [tree-sitter-ng](https://github.com/nicktorwald/tree-sitter-ng) — structural parsing
-- **Javalin** — HTTP server (webhook, SSE, admin API, static files)
+- **SCIP** (protobuf) — type-resolved semantic intelligence
+- **Javalin** — HTTP server (webhook, Streamable HTTP, admin API, static files)
 - **MCP Java SDK** — Model Context Protocol implementation
+- **Nimbus JOSE + JWT** — OAuth2/JWT bearer-token validation
 - **Flyway** — database migrations
 - **React + Vite + shadcn/ui** — admin dashboard
 - **Testcontainers** — integration testing with real PostgreSQL
