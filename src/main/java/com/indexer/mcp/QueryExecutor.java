@@ -15,13 +15,10 @@ import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Core query engine for the MCP server. All MCP tools delegate to this class.
@@ -241,7 +238,8 @@ public class QueryExecutor {
             sb.append("""
                     SELECT s.id, s.name, s.kind, s.signature, s.start_line, s.end_line,
                            s.parent_id, s.visibility, s.is_static,
-                           ef.path AS file_path, r.name AS repo_name, r.clone_path
+                           ef.id AS file_id,
+                           ef.path AS file_path, r.name AS repo_name
                     FROM symbols s
                     JOIN effective_files ef ON s.file_id = ef.id
                     JOIN repositories r ON ef.repo_id = r.id
@@ -277,10 +275,18 @@ public class QueryExecutor {
             int symbolId = ((Number) symbol.get("id")).intValue();
             int startLine = ((Number) symbol.get("start_line")).intValue();
             int endLine = ((Number) symbol.get("end_line")).intValue();
-            String clonePath = (String) symbol.get("clone_path");
+            long fileId = ((Number) symbol.get("file_id")).longValue();
 
-            // Read source lines from disk
-            symbol.put("source_code", readSourceLines(clonePath, filePath, startLine, endLine));
+            // Read source from the overlay-resolved file_contents row (ref-aware),
+            // not the on-disk working tree (which is always checked out to main).
+            String content = handle.createQuery(
+                            "SELECT content FROM file_contents WHERE file_id = :fileId")
+                    .bind("fileId", fileId)
+                    .mapTo(String.class)
+                    .findOne()
+                    .orElse(null);
+            symbol.put("source_code", sliceLines(content, startLine, endLine));
+            symbol.remove("file_id"); // internal id — not part of the response contract
 
             // Fetch children (e.g., methods if this is a class)
             var children = handle.createQuery("""
@@ -1649,22 +1655,24 @@ public class QueryExecutor {
         }
     }
 
-    private String readSourceLines(String clonePath, String filePath, int startLine, int endLine) {
-        if (clonePath == null || clonePath.isBlank()) {
+    /**
+     * Slice lines [startLine, endLine] (1-based, inclusive) out of stored file content.
+     * Mirrors the old disk-based readSourceLines semantics but reads from file_contents
+     * (ref-aware via the effective_files overlay) instead of the working tree.
+     * Returns null when content is null (binary/oversized/metadata-only files).
+     */
+    private static String sliceLines(String content, int startLine, int endLine) {
+        if (content == null) {
             return null;
         }
-        try {
-            Path fullPath = Path.of(clonePath).resolve(filePath);
-            if (!Files.exists(fullPath)) {
-                return null;
-            }
-            List<String> lines = Files.readAllLines(fullPath);
-            int from = Math.max(0, startLine - 1);
-            int to = Math.min(lines.size(), endLine);
-            return lines.subList(from, to).stream().collect(Collectors.joining("\n"));
-        } catch (IOException e) {
-            log.warn("Could not read source lines from {}/{}: {}", clonePath, filePath, e.getMessage());
-            return null;
+        // String.lines() splits on \n, \r, and \r\n and drops a trailing terminator,
+        // matching Files.readAllLines — so symbol line numbers line up.
+        List<String> lines = content.lines().toList();
+        int from = Math.max(0, startLine - 1);
+        int to = Math.min(lines.size(), endLine);
+        if (from >= to) {
+            return "";
         }
+        return String.join("\n", lines.subList(from, to));
     }
 }

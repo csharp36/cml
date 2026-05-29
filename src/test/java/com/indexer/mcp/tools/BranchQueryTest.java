@@ -31,12 +31,13 @@ class BranchQueryTest {
     private int repoId;
     private FileDao fileDao;
     private SymbolDao symbolDao;
+    private Jdbi jdbi;
 
     @BeforeEach
     void setUp() {
         var dbManager = new DatabaseManager(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         dbManager.initialize();
-        var jdbi = dbManager.getJdbi();
+        jdbi = dbManager.getJdbi();
         jdbi.useHandle(h -> {
             h.execute("DELETE FROM type_relationships");
             h.execute("DELETE FROM imports");
@@ -195,5 +196,66 @@ class BranchQueryTest {
         // Branch has 2 effective files: branch App.java (overlays main) + main Utils.java
         var branchSummary = queryExecutor.getRepoSummary("test-repo", "feature/new-auth");
         assertThat(((Number) branchSummary.get("fileCount")).intValue()).isEqualTo(2);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void getSymbolDetailReturnsSourceForMainFile() {
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/Detail.java", "java", 100, "abc", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, fileId, "Detail", "class", "public class Detail", 2, 4, null, "public", false));
+        insertContent(fileId, "package x;\npublic class Detail {\n  int f;\n}\n");
+
+        var detail = queryExecutor.getSymbolDetail("test-repo", "src/Detail.java", "Detail", null, "main");
+
+        assertThat((String) detail.get("source_code")).isEqualTo("public class Detail {\n  int f;\n}");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void getSymbolDetailReturnsSourceForBranchOnlyFile() {
+        // File exists ONLY on the feature branch — the on-disk working tree (main) has no such file,
+        // so the old disk read returned null. This is the core bug.
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "feature/detail", "src/Only.java", "java", 100, "def", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, fileId, "doThing", "method", "void doThing()", 1, 2, null, "public", false));
+        insertContent(fileId, "void doThing() {\n  return;\n}\n");
+
+        var detail = queryExecutor.getSymbolDetail("test-repo", "src/Only.java", "doThing", null, "feature/detail");
+
+        assertThat((String) detail.get("source_code")).isEqualTo("void doThing() {\n  return;");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void getSymbolDetailReturnsNullSourceForMetadataOnlyFile() {
+        // A file row + symbol but NO file_contents row (binary/oversized → content never stored).
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "main", "bin/Blob.bin", "binary", 999999, "abc", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, fileId, "Blob", "class", "n/a", 1, 1, null, "public", false));
+        // intentionally no insertContent(...)
+
+        var detail = queryExecutor.getSymbolDetail("test-repo", "bin/Blob.bin", "Blob", null, "main");
+
+        assertThat(detail.get("source_code")).isNull();
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    void getSymbolDetailSlicesCorrectLineRange() {
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/Slice.java", "java", 100, "abc", Instant.now()));
+        symbolDao.insertSymbol(new Symbol(0, fileId, "mid", "method", "void mid()", 3, 5, null, "public", false));
+        insertContent(fileId, "L1\nL2\nL3\nL4\nL5\nL6\n");
+
+        var detail = queryExecutor.getSymbolDetail("test-repo", "src/Slice.java", "mid", null, "main");
+
+        assertThat((String) detail.get("source_code")).isEqualTo("L3\nL4\nL5");
+    }
+
+    /** Insert (or replace) the stored content for a file. The DB trigger fills search_vector. */
+    private void insertContent(int fileId, String content) {
+        jdbi.useHandle(h -> h.createUpdate(
+                        "INSERT INTO file_contents (file_id, content) VALUES (:fid, :c) " +
+                                "ON CONFLICT (file_id) DO UPDATE SET content = EXCLUDED.content")
+                .bind("fid", fileId)
+                .bind("c", content)
+                .execute());
     }
 }
