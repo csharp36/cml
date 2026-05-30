@@ -723,17 +723,17 @@ public class QueryExecutor {
 
             // Per-repo stats
             var repos = handle.createQuery("""
-                    SELECT r.name AS repo_name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at,
+                    SELECT r.name AS repo_name, r.last_indexed_sha, r.scip_uploaded_at,
                            CASE
-                               WHEN r.scip_sha IS NULL THEN 'unavailable'
-                               WHEN r.scip_sha = r.last_indexed_sha THEN 'fresh'
+                               WHEN NOT EXISTS (SELECT 1 FROM scip_symbols s WHERE s.repo_id = r.id) THEN 'unavailable'
+                               WHEN EXISTS (SELECT 1 FROM scip_symbols s WHERE s.repo_id = r.id AND s.upload_sha = r.last_indexed_sha) THEN 'fresh'
                                ELSE 'stale'
                            END AS scip_status,
                            COUNT(CASE WHEN ie.status = 'pending' THEN 1 END) AS pending_events,
                            COUNT(CASE WHEN ie.status = 'failed' THEN 1 END) AS failed_events
                     FROM repositories r
                     LEFT JOIN indexing_events ie ON ie.repo_name = r.name
-                    GROUP BY r.name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at
+                    GROUP BY r.id, r.name, r.last_indexed_sha, r.scip_uploaded_at
                     ORDER BY r.name
                     """)
                     .mapToMap()
@@ -774,19 +774,20 @@ public class QueryExecutor {
     public String getScipStatus(String repoName) {
         if (repoName == null || repoName.isBlank()) return null;
         return jdbi.withHandle(handle -> {
-            var opt = handle.createQuery("""
-                    SELECT scip_sha, last_indexed_sha
-                    FROM repositories WHERE name = :name
-                    """)
-                    .bind("name", repoName)
-                    .mapToMap()
-                    .findOne();
-            if (opt.isEmpty()) return null;
-            var row = opt.get();
-            Object scipSha = row.get("scip_sha");
-            Object indexedSha = row.get("last_indexed_sha");
-            if (scipSha == null) return "unavailable";
-            return scipSha.equals(indexedSha) ? "fresh" : "stale";
+            var repo = handle.createQuery("SELECT id, last_indexed_sha FROM repositories WHERE name = :name")
+                    .bind("name", repoName).mapToMap().findOne();
+            if (repo.isEmpty()) return null;
+            int repoId = ((Number) repo.get().get("id")).intValue();
+            String indexedSha = (String) repo.get().get("last_indexed_sha");
+
+            boolean anyScip = handle.createQuery("SELECT EXISTS(SELECT 1 FROM scip_symbols WHERE repo_id = :id)")
+                    .bind("id", repoId).mapTo(Boolean.class).one();
+            if (!anyScip) return "unavailable";
+
+            boolean freshScip = indexedSha != null && handle.createQuery(
+                            "SELECT EXISTS(SELECT 1 FROM scip_symbols WHERE repo_id = :id AND upload_sha = :sha)")
+                    .bind("id", repoId).bind("sha", indexedSha).mapTo(Boolean.class).one();
+            return freshScip ? "fresh" : "stale";
         });
     }
 

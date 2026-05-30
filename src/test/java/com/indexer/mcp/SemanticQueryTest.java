@@ -68,20 +68,18 @@ class SemanticQueryTest {
 
             // SCIP relationships
             handle.execute("""
-                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line)
-                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'java maven . com/example/PaymentProcessor#.', 'implements', 'src/StripeProcessor.java', 5)
+                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line, upload_sha)
+                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'java maven . com/example/PaymentProcessor#.', 'implements', 'src/StripeProcessor.java', 5, 'abc123')
                     """, repoId);
             handle.execute("""
-                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line)
-                    VALUES (?, 'java maven . com/example/PayPalProcessor#.', 'java maven . com/example/PaymentProcessor#.', 'implements', 'src/PayPalProcessor.java', 3)
+                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line, upload_sha)
+                    VALUES (?, 'java maven . com/example/PayPalProcessor#.', 'java maven . com/example/PaymentProcessor#.', 'implements', 'src/PayPalProcessor.java', 3, 'abc123')
                     """, repoId);
             handle.execute("""
-                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line)
-                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'java maven . com/example/Serializable#.', 'implements', 'src/StripeProcessor.java', 5)
+                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line, upload_sha)
+                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'java maven . com/example/Serializable#.', 'implements', 'src/StripeProcessor.java', 5, 'abc123')
                     """, repoId);
 
-            // Set SCIP SHA to match indexed SHA (fresh)
-            handle.execute("UPDATE repositories SET scip_sha = 'abc123' WHERE id = ?", repoId);
         });
 
         queryExecutor = new QueryExecutor(jdbi);
@@ -89,18 +87,26 @@ class SemanticQueryTest {
 
     @Test
     void getScipStatusFresh() {
+        // Seed: last_indexed_sha='abc123', scip_symbols rows have upload_sha='abc123' — existence match.
         assertThat(queryExecutor.getScipStatus("test-repo")).isEqualTo("fresh");
     }
 
     @Test
     void getScipStatusStale() {
-        jdbi.useHandle(h -> h.execute("UPDATE repositories SET scip_sha = 'old-sha' WHERE name = 'test-repo'"));
+        // Advance last_indexed_sha so no scip_symbols row matches; rows still exist → stale.
+        jdbi.useHandle(h -> h.execute("UPDATE repositories SET last_indexed_sha = 'newer-sha' WHERE name = 'test-repo'"));
         assertThat(queryExecutor.getScipStatus("test-repo")).isEqualTo("stale");
     }
 
     @Test
     void getScipStatusUnavailable() {
-        jdbi.useHandle(h -> h.execute("UPDATE repositories SET scip_sha = NULL WHERE name = 'test-repo'"));
+        // Remove all scip rows for the repo; existence check returns false → unavailable.
+        jdbi.useHandle(h -> {
+            int repoId = h.createQuery("SELECT id FROM repositories WHERE name = 'test-repo'")
+                    .mapTo(Integer.class).one();
+            h.execute("DELETE FROM scip_relationships WHERE repo_id = ?", repoId);
+            h.execute("DELETE FROM scip_symbols WHERE repo_id = ?", repoId);
+        });
         assertThat(queryExecutor.getScipStatus("test-repo")).isEqualTo("unavailable");
     }
 
