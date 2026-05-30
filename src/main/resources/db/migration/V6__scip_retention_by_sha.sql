@@ -9,8 +9,10 @@ UPDATE scip_relationships sr
    SET upload_sha = r.scip_sha
   FROM repositories r
  WHERE sr.repo_id = r.id AND sr.upload_sha IS NULL;
--- Any rows with no known upload (repo never had scip_sha) get a sentinel so NOT NULL holds.
-UPDATE scip_relationships SET upload_sha = 'unknown' WHERE upload_sha IS NULL;
+-- Any rows with no known upload (repo never had scip_sha) get a reserved sentinel so NOT NULL holds.
+-- 'unknown-backfill' is a non-SHA reserved value (real git SHAs are 40 hex chars) and can never
+-- collide with a caller-supplied SHA, so SHA-scoped DELETEs will never touch these rows.
+UPDATE scip_relationships SET upload_sha = 'unknown-backfill' WHERE upload_sha IS NULL;
 ALTER TABLE scip_relationships ALTER COLUMN upload_sha SET NOT NULL;
 CREATE INDEX idx_scip_rel_repo_sha ON scip_relationships (repo_id, upload_sha);
 
