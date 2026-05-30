@@ -38,6 +38,7 @@ class RefFaultInIntegrationTest {
     private BranchIndexDao branchIndexDao;
     private int repoId;
     private Path repoDir;
+    private String taggedSha;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -73,6 +74,7 @@ class RefFaultInIntegrationTest {
         git("add", "Tagged.java");
         git("commit", "-m", "tagged");
         git("tag", "v1.0");
+        taggedSha = gitCapture("rev-parse", "refs/tags/v1.0^{commit}");
 
         // Reset HEAD back to main (one commit back); v1.0 still points at the tagged commit
         git("reset", "--hard", "HEAD~1");
@@ -116,6 +118,23 @@ class RefFaultInIntegrationTest {
         assertThat(bi.get().refKind()).isEqualTo(RefKind.TAG);
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void queryingAShaFaultsItInAndRecordsShaKind() {
+        // Querying by the raw commit SHA should fault in that commit and make Tagged visible.
+        var raw = (Map<String, Object>) queryExecutor.searchSymbols(
+                "Tagged", null, null, "repo", taggedSha, 20);
+        var results = (List<Map<String, Object>>) raw.get("results");
+
+        assertThat(results).as("sha faulted in; Tagged class visible").hasSize(1);
+        assertThat(results.get(0).get("name")).isEqualTo("Tagged");
+
+        // The branch_index row must exist and record SHA kind
+        var bi = branchIndexDao.find(repoId, taggedSha);
+        assertThat(bi).isPresent();
+        assertThat(bi.get().refKind()).isEqualTo(RefKind.SHA);
+    }
+
     private void git(String... args) throws Exception {
         var cmd = new java.util.ArrayList<String>(List.of("git"));
         cmd.addAll(List.of(args));
@@ -125,5 +144,17 @@ class RefFaultInIntegrationTest {
         Process p = pb.start();
         p.getInputStream().readAllBytes();
         if (p.waitFor() != 0) throw new IllegalStateException("git " + List.of(args) + " failed");
+    }
+
+    private String gitCapture(String... args) throws Exception {
+        var cmd = new java.util.ArrayList<String>(List.of("git"));
+        cmd.addAll(List.of(args));
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(repoDir.toFile());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String output = new String(p.getInputStream().readAllBytes()).trim();
+        if (p.waitFor() != 0) throw new IllegalStateException("git " + List.of(args) + " failed: " + output);
+        return output;
     }
 }
