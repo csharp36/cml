@@ -249,6 +249,45 @@ class BranchQueryTest {
         assertThat((String) detail.get("source_code")).isEqualTo("L3\nL4\nL5");
     }
 
+    // --- Phase 2: full-text search (search_code) is ref-aware via the effective_files overlay ---
+
+    @Test
+    void searchCodeFindsBranchOnlyContentButNotOnMain() {
+        // A file that exists only on the feature branch, with a distinctive token.
+        int fileId = fileDao.upsert(new SourceFile(0, repoId, "feature/new-auth", "src/Auth.java", "java", 100, "def", Instant.now()));
+        insertContent(fileId, "the zephyrtoken validator runs here");
+
+        // Querying the branch finds the branch-only content...
+        var onBranch = queryExecutor.searchCode("zephyrtoken", null, "test-repo", "feature/new-auth", 20);
+        assertThat(onBranch).anyMatch(r -> "src/Auth.java".equals(r.get("file_path")));
+
+        // ...but querying main does NOT (the content lives only on the branch).
+        var onMain = queryExecutor.searchCode("zephyrtoken", null, "test-repo", "main", 20);
+        assertThat(onMain).noneMatch(r -> "src/Auth.java".equals(r.get("file_path")));
+    }
+
+    @Test
+    void searchCodeBranchContentShadowsMainForSamePath() {
+        // Same path on main and branch, each with a distinct token. The overlay must
+        // resolve content to the branch copy for a branch query (DISTINCT ON path).
+        int mainId = fileDao.upsert(new SourceFile(0, repoId, "main", "src/Shadow.java", "java", 100, "abc", Instant.now()));
+        insertContent(mainId, "the mainonly marker lives here");
+        int branchId = fileDao.upsert(new SourceFile(0, repoId, "feature/new-auth", "src/Shadow.java", "java", 100, "def", Instant.now()));
+        insertContent(branchId, "the branchonly marker lives here");
+
+        // Branch query sees the branch content for that path, and NOT main's content.
+        var branchSeesBranch = queryExecutor.searchCode("branchonly", null, "test-repo", "feature/new-auth", 20);
+        assertThat(branchSeesBranch).anyMatch(r -> "src/Shadow.java".equals(r.get("file_path")));
+        var branchSeesMainToken = queryExecutor.searchCode("mainonly", null, "test-repo", "feature/new-auth", 20);
+        assertThat(branchSeesMainToken).noneMatch(r -> "src/Shadow.java".equals(r.get("file_path")));
+
+        // Main query sees main's content, and NOT the branch's.
+        var mainSeesMain = queryExecutor.searchCode("mainonly", null, "test-repo", "main", 20);
+        assertThat(mainSeesMain).anyMatch(r -> "src/Shadow.java".equals(r.get("file_path")));
+        var mainSeesBranchToken = queryExecutor.searchCode("branchonly", null, "test-repo", "main", 20);
+        assertThat(mainSeesBranchToken).noneMatch(r -> "src/Shadow.java".equals(r.get("file_path")));
+    }
+
     /** Insert (or replace) the stored content for a file. The DB trigger fills search_vector. */
     private void insertContent(int fileId, String content) {
         jdbi.useHandle(h -> h.createUpdate(
