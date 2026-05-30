@@ -106,6 +106,33 @@ public class QueryExecutor {
             }
         }
 
+        // Authorization check — API-key callers are scoped to their configured repos.
+        // ["*"] = full access (explicit, auditable); a concrete list restricts to those repos;
+        // an empty scope denies everything (fail-closed). stdio/anonymous are intentionally unscoped.
+        if ("api-key".equals(caller.authMethod())) {
+            List<String> scope = caller.allowedRepos();
+            boolean wildcard = scope.contains("*");
+            if (!wildcard) {
+                if (repo == null) {
+                    log.warn("Access denied: api-key {} called {} without repo (requires full access)",
+                            caller.displayName(), action);
+                    auditBestEffort(caller, action, null, false, "denied", "Repository parameter required");
+                    return McpSchema.CallToolResult.builder()
+                            .addTextContent("Repository parameter is required for scoped API keys")
+                            .isError(true)
+                            .build();
+                }
+                if (!scope.contains(repo)) {
+                    log.warn("Access denied: api-key {} not scoped for repo {}", caller.displayName(), repo);
+                    auditBestEffort(caller, action, repo, false, "denied", "Access denied to repository: " + repo);
+                    return McpSchema.CallToolResult.builder()
+                            .addTextContent("Access denied to repository: " + repo)
+                            .isError(true)
+                            .build();
+                }
+            }
+        }
+
         // Execute query
         Object result;
         String resultStatus;
