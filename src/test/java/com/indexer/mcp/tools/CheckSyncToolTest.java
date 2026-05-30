@@ -45,7 +45,7 @@ class CheckSyncToolTest {
 
         // Simulate indexed feature branch
         var repo = repoDao.findByName("backend-api").orElseThrow();
-        branchIndexDao.upsert(repo.id(), "feature/auth", "abc1234def5678901234567890abcdef12345678", "fff0000111222333444555666777888999aaabbb");
+        branchIndexDao.upsert(repo.id(), "feature/auth", "abc1234def5678901234567890abcdef12345678", "fff0000111222333444555666777888999aaabbb", "branch");
 
         // Also insert a repo with null SHA (not yet indexed)
         repoDao.insert(new Repository(0, "not-indexed-yet", "git@github.com:org/new.git", "main",

@@ -3,6 +3,7 @@ package com.indexer.indexing;
 import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.repository.GitOperations;
+import com.indexer.repository.RefKind;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,7 +94,7 @@ public class IndexingPipeline {
      * Index a feature branch by computing its delta from main.
      * Only changed files are indexed; unchanged files fall through to main via overlay queries.
      */
-    public void branchIndex(int repoId, String branch, Path repoDir, String branchSha) throws IOException {
+    public void branchIndex(int repoId, String branch, Path repoDir, String branchSha, RefKind refKind) throws IOException {
         log.info("Branch indexing repo {} branch {} at SHA {}", repoId, branch, branchSha);
 
         String mainSha = gitOps.getCurrentSha(repoDir);
@@ -113,7 +114,7 @@ public class IndexingPipeline {
         }
 
         if (branchIndexDao != null) {
-            branchIndexDao.upsert(repoId, branch, mainSha, branchSha);
+            branchIndexDao.upsert(repoId, branch, mainSha, branchSha, refKind.dbValue());
         }
 
         log.info("Branch index complete for repo {} branch {}", repoId, branch);

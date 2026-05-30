@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "source-code-indexer": {
+      "type": "http",
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SOURCE_CODE_INDEXER_API_KEY}"
+      }
+    }
+  }
+}

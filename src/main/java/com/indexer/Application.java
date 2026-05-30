@@ -22,6 +22,7 @@ import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.transport.HttpServletStreamableServerTransportProvider;
 import com.indexer.queue.EventQueuePoller;
 import com.indexer.repository.GitOperations;
+import com.indexer.repository.RefKind;
 import com.indexer.repository.RepositoryManager;
 import com.indexer.server.HttpServer;
 import org.slf4j.Logger;
@@ -244,7 +245,8 @@ public class Application {
                     } else {
                         // Feature branch: fetch, then delta-index from main
                         gitOps.fetch(Path.of(repo.clonePath()), null);
-                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()), event.currentSha());
+                        // TODO Phase 1 (tag pushes): derive RefKind from the event payload instead of hardcoding BRANCH
+                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()), event.currentSha(), RefKind.BRANCH);
                     }
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);

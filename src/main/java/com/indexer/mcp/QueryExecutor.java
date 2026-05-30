@@ -10,6 +10,7 @@ import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.repository.GitOperations;
+import com.indexer.repository.RefKind;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
@@ -1647,7 +1648,7 @@ public class QueryExecutor {
             }
 
             String branchSha = gitOps.getShaForRef(repoDir, "origin/" + effectiveBranch);
-            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, branchSha);
+            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, branchSha, RefKind.BRANCH);
             log.info("Fault-in complete for branch '{}' repo '{}'", effectiveBranch, repo);
         } catch (Exception e) {
             log.warn("Fault-in failed for branch '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
