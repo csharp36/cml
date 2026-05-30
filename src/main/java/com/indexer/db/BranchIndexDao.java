@@ -1,6 +1,7 @@
 package com.indexer.db;
 
 import com.indexer.model.BranchIndex;
+import com.indexer.repository.RefKind;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.List;
@@ -14,14 +15,15 @@ public class BranchIndexDao {
         this.jdbi = jdbi;
     }
 
-    public void upsert(int repoId, String branch, String baseSha, String indexedSha) {
+    public void upsert(int repoId, String branch, String baseSha, String indexedSha, String refKind) {
         jdbi.useHandle(handle ->
                 handle.createUpdate("""
-                        INSERT INTO branch_index (repo_id, branch, base_sha, indexed_sha, indexed_at, last_accessed_at)
-                        VALUES (:repoId, :branch, :baseSha, :indexedSha, NOW(), NOW())
+                        INSERT INTO branch_index (repo_id, branch, base_sha, indexed_sha, ref_kind, indexed_at, last_accessed_at)
+                        VALUES (:repoId, :branch, :baseSha, :indexedSha, :refKind, NOW(), NOW())
                         ON CONFLICT (repo_id, branch) DO UPDATE
                             SET base_sha = EXCLUDED.base_sha,
                                 indexed_sha = EXCLUDED.indexed_sha,
+                                ref_kind = EXCLUDED.ref_kind,
                                 indexed_at = NOW(),
                                 last_accessed_at = NOW()
                         """)
@@ -29,6 +31,7 @@ public class BranchIndexDao {
                         .bind("branch", branch)
                         .bind("baseSha", baseSha)
                         .bind("indexedSha", indexedSha)
+                        .bind("refKind", refKind)
                         .execute()
         );
     }
@@ -45,7 +48,8 @@ public class BranchIndexDao {
                                 rs.getString("base_sha"),
                                 rs.getString("indexed_sha"),
                                 rs.getTimestamp("indexed_at").toInstant(),
-                                rs.getTimestamp("last_accessed_at").toInstant()
+                                rs.getTimestamp("last_accessed_at").toInstant(),
+                                RefKind.fromDb(rs.getString("ref_kind"))
                         ))
                         .findOne()
         );
@@ -74,7 +78,8 @@ public class BranchIndexDao {
                                 rs.getString("base_sha"),
                                 rs.getString("indexed_sha"),
                                 rs.getTimestamp("indexed_at").toInstant(),
-                                rs.getTimestamp("last_accessed_at").toInstant()
+                                rs.getTimestamp("last_accessed_at").toInstant(),
+                                RefKind.fromDb(rs.getString("ref_kind"))
                         ))
                         .list()
         );

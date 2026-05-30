@@ -99,6 +99,61 @@ class GitOperationsTest {
         assertThat(files).contains("FileA.java", "FileB.java");
     }
 
+    @Test
+    void resolveAnyRefResolvesTagAndSha() throws Exception {
+        run(repoDir, "git", "tag", "v1.0");
+
+        var tag = gitOps.resolveAnyRef(repoDir, "v1.0");
+        assertThat(tag).isPresent();
+        assertThat(tag.get().kind()).isEqualTo(RefKind.TAG);
+        assertThat(tag.get().sha()).isEqualTo(secondSha);
+
+        var sha = gitOps.resolveAnyRef(repoDir, secondSha);
+        assertThat(sha).isPresent();
+        assertThat(sha.get().kind()).isEqualTo(RefKind.SHA);
+        assertThat(sha.get().sha()).isEqualTo(secondSha);
+
+        assertThat(gitOps.resolveAnyRef(repoDir, "does-not-exist")).isEmpty();
+    }
+
+    @Test
+    void resolveAnyRefResolvesRemoteBranchAndFetchesTags() throws Exception {
+        Path origin = tempDir.resolve("origin");
+        Files.createDirectories(origin);
+        run(origin, "git", "init");
+        run(origin, "git", "config", "user.email", "test@example.com");
+        run(origin, "git", "config", "user.name", "Test User");
+        run(origin, "git", "config", "commit.gpgsign", "false");
+        Files.writeString(origin.resolve("R.java"), "public class R {}");
+        run(origin, "git", "add", "R.java");
+        run(origin, "git", "commit", "-m", "init");
+
+        Path clone = tempDir.resolve("clone");
+        run(tempDir, "git", "clone", origin.toString(), clone.toString());
+        String defaultBranch = runDefaultBranch(clone);
+
+        var br = gitOps.resolveAnyRef(clone, defaultBranch);
+        assertThat(br).isPresent();
+        assertThat(br.get().kind()).isEqualTo(RefKind.BRANCH);
+
+        run(origin, "git", "tag", "v2.0");
+        gitOps.fetch(clone, null); // must fetch tags
+        var tag = gitOps.resolveAnyRef(clone, "v2.0");
+        assertThat(tag).as("fetch must bring remote tags into the clone").isPresent();
+        assertThat(tag.get().kind()).isEqualTo(RefKind.TAG);
+    }
+
+    /** Returns the clone's current branch name (e.g. "main" or "master"). */
+    private String runDefaultBranch(Path dir) throws Exception {
+        ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD");
+        pb.directory(dir.toFile());
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+        String out = new String(p.getInputStream().readAllBytes()).trim();
+        p.waitFor();
+        return out;
+    }
+
     // --- helper ---
 
     private void run(Path dir, String... cmd) throws IOException, InterruptedException {

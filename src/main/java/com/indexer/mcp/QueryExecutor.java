@@ -10,6 +10,7 @@ import com.indexer.db.BranchIndexDao;
 import com.indexer.db.RepositoryDao;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.repository.GitOperations;
+import com.indexer.repository.RefKind;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.jdbi.v3.core.Jdbi;
 import org.slf4j.Logger;
@@ -1614,9 +1615,10 @@ public class QueryExecutor {
     }
 
     /**
-     * Ensure branch index data exists. If querying a non-main branch and no branch_index
-     * record exists, attempt synchronous fault-in by indexing the branch delta from main.
-     * This is a no-op for main branch or when fault-in dependencies are not configured.
+     * Ensure an index exists for the given ref (branch, tag, or commit SHA). If no
+     * branch_index record exists, attempts a synchronous fault-in. Falls back to
+     * main-only results if the ref is unresolvable or fault-in fails.
+     * This is a no-op for the main branch or when fault-in dependencies are not configured.
      */
     private void ensureBranchIndexed(String repo, String effectiveBranch) {
         if ("main".equals(effectiveBranch)) return;
@@ -1636,21 +1638,21 @@ public class QueryExecutor {
         }
 
         // No index exists -- attempt fault-in
-        log.info("Branch '{}' not indexed for repo '{}', triggering synchronous fault-in", effectiveBranch, repo);
+        log.info("Ref '{}' not indexed for repo '{}', triggering synchronous fault-in", effectiveBranch, repo);
         try {
             Path repoDir = Path.of(repoObj.clonePath());
-            gitOps.fetch(repoDir, null);
+            gitOps.fetch(repoDir, null); // also fetches tags
 
-            if (!gitOps.remoteBranchExists(repoDir, effectiveBranch)) {
-                log.debug("Remote branch '{}' does not exist for repo '{}', falling back to main", effectiveBranch, repo);
+            var resolved = gitOps.resolveAnyRef(repoDir, effectiveBranch);
+            if (resolved.isEmpty()) {
+                log.debug("Ref '{}' not resolvable for repo '{}', falling back to main", effectiveBranch, repo);
                 return;
             }
-
-            String branchSha = gitOps.getShaForRef(repoDir, "origin/" + effectiveBranch);
-            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, branchSha);
-            log.info("Fault-in complete for branch '{}' repo '{}'", effectiveBranch, repo);
+            var ref = resolved.get();
+            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, ref.sha(), ref.kind());
+            log.info("Fault-in complete for ref '{}' ({}) repo '{}'", effectiveBranch, ref.kind(), repo);
         } catch (Exception e) {
-            log.warn("Fault-in failed for branch '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
+            log.warn("Fault-in failed for ref '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
             // Fall through -- query will return main-only results
         }
     }
