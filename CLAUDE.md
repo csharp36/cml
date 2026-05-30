@@ -299,10 +299,10 @@ Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get 
 | `get_directory_tree` | Directory tree | Nested structure with types |
 | `get_index_health` | System health check | Per-repo status, errors, queue state, SCIP staleness |
 | `check_sync` | Compare local HEAD SHA with indexed SHA | Sync status, recommended action |
-| `get_type_hierarchy` | Type hierarchy from SCIP data | Supertypes, subtypes (recursive tree) |
-| `get_symbol_references` | Symbol relationships from SCIP data | Flat list of related symbols |
+| `get_type_hierarchy` | Type hierarchy from SCIP data (ref-aware: resolves SCIP at the given branch/tag/SHA) | Supertypes, subtypes (recursive tree) |
+| `get_symbol_references` | Symbol relationships from SCIP data (ref-aware: resolves SCIP at the given branch/tag/SHA) | Flat list of related symbols |
 
-All tools except `get_index_health`, `get_type_hierarchy`, and `get_symbol_references` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay.
+All tools except `get_index_health` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay. `get_type_hierarchy` and `get_symbol_references` also accept `branch` (any branch/tag/SHA); the param resolves SCIP at that ref's SHA, enabling type-resolved queries against any indexed release or commit.
 
 ## Branch Support
 
@@ -321,6 +321,9 @@ branches:
   autoIndex: true           # Index branches automatically on push
   ttlDays: 14               # Days of inactivity before branch data is cleaned up
   cleanupIntervalHours: 24  # How often the cleanup task runs
+
+scip:
+  pruneGraceDays: 7         # SCIP uploads within this window are kept even if the ref is no longer live
 ```
 
 ### Any ref: branches, tags, and commit SHAs
@@ -422,7 +425,11 @@ Body: raw SCIP protobuf bytes
 
 **Error codes:** 401 (bad auth), 403 (no `scipUpload` permission), 404 (repo not found), 413 (>50MB), 400 (bad protobuf/missing SHA), 422 (no file overlap with indexed repo).
 
-Each upload replaces all SCIP data for the repo. `get_index_health` reports SCIP staleness per repo: `fresh` (SCIP SHA matches indexed SHA), `stale` (behind), or `unavailable` (no upload yet).
+Uploads are retained **per `X-Git-SHA`** — not replace-all. Re-uploading the same SHA replaces only that SHA's data; different SHAs coexist, so a tagged release keeps its own type-resolution layer independent of main. CI uploads SCIP on both branch pushes and tag pushes (see `.github/workflows/scip-upload.yml`).
+
+A periodic retention policy (`ScipPruneTask`) keeps SCIP for: the current main SHA, all live indexed refs (branches/tags tracked in `branch_index`), and any upload within a configurable grace window (default 7 days, controlled by `scip.pruneGraceDays`). Older SHA rows are pruned automatically.
+
+`get_index_health` reports SCIP staleness per repo (existence-based, checked against main's `last_indexed_sha` — this tool is repo-global and not ref-aware): `fresh` (SCIP exists for the main indexed SHA), `stale` (main has advanced past the SCIP SHAs on hand), or `unavailable` (no SCIP upload for this repo yet).
 
 ## SCIP CLI Wrapper
 

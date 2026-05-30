@@ -7,6 +7,12 @@ name: SCIP Upload
 on:
   push:
     branches: [main]
+    tags: ['*']
+    # On a tag push, git rev-parse HEAD resolves to the tag's commit SHA, so the
+    # upload is automatically keyed to that SHA — no script change required.
+    # Note: full type-resolved tag *queries* also require the tag to be indexed
+    # as a branch_index overlay (handled by Phase 1 lazy fault-in / a future
+    # Phase 4 CI trigger); this job only covers the SCIP semantic layer.
   workflow_dispatch: {}   # allow manual re-upload (e.g. after fixing a stale repo)
 
 # A newer commit's SCIP should win. Cancel an in-flight upload for an older SHA

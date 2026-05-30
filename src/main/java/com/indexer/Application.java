@@ -8,6 +8,8 @@ import com.indexer.config.IndexerConfig;
 import com.indexer.config.LanguageRegistry;
 import com.indexer.db.*;
 import com.indexer.indexing.BranchCleanupTask;
+import com.indexer.scip.ScipDao;
+import com.indexer.scip.ScipPruneTask;
 import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
@@ -263,6 +265,16 @@ public class Application {
                     TimeUnit.HOURS);
             log.info("Branch cleanup task scheduled every {}h (TTL={}d)",
                     config.branches().cleanupIntervalHours(), config.branches().ttlDays());
+
+            // 8c. Schedule SCIP prune task
+            // SCIP prune reuses branches.cleanupIntervalHours; add a dedicated scip.pruneIntervalHours if an independent cadence is ever needed.
+            var scipPruneTask = new ScipPruneTask(new ScipDao(jdbi), repositoryDao, config.scip().pruneGraceDays());
+            scheduler.scheduleAtFixedRate(scipPruneTask,
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().cleanupIntervalHours(),
+                    TimeUnit.HOURS);
+            log.info("SCIP prune task scheduled every {}h (grace={}d)",
+                    config.branches().cleanupIntervalHours(), config.scip().pruneGraceDays());
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

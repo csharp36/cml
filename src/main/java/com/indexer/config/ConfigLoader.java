@@ -87,9 +87,10 @@ public class ConfigLoader {
         IndexerConfig.LanguagesConfig languages = parseLanguages(root.get("languages"));
         IndexerConfig.AdminConfig admin = parseAdmin(root.get("admin"));
         IndexerConfig.BranchConfig branches = parseBranches(root.get("branches"));
+        IndexerConfig.ScipConfig scip = parseScip(root.get("scip"));
         IndexerConfig.McpAuthConfig mcpAuth = parseMcpAuth(root.get("auth"));
 
-        return new IndexerConfig(server, database, repositories, languages, admin, branches, mcpAuth);
+        return new IndexerConfig(server, database, repositories, languages, admin, branches, scip, mcpAuth);
     }
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
@@ -172,6 +173,12 @@ public class ConfigLoader {
         int ttlDays = node.has("ttlDays") ? node.get("ttlDays").asInt(14) : 14;
         int cleanupIntervalHours = node.has("cleanupIntervalHours") ? node.get("cleanupIntervalHours").asInt(24) : 24;
         return new IndexerConfig.BranchConfig(autoIndex, ttlDays, cleanupIntervalHours);
+    }
+
+    private IndexerConfig.ScipConfig parseScip(JsonNode node) {
+        if (node == null) return new IndexerConfig.ScipConfig(7);
+        int pruneGraceDays = node.has("pruneGraceDays") ? node.get("pruneGraceDays").asInt(7) : 7;
+        return new IndexerConfig.ScipConfig(pruneGraceDays);
     }
 
     private IndexerConfig.McpAuthConfig parseMcpAuth(JsonNode node) {

@@ -13,6 +13,7 @@ public record IndexerConfig(
         LanguagesConfig languages,
         AdminConfig admin,
         BranchConfig branches,
+        ScipConfig scip,
         @JsonProperty("auth") McpAuthConfig mcpAuth
 ) {
     public record ServerConfig(
@@ -77,6 +78,12 @@ public record IndexerConfig(
         }
     }
 
+    public record ScipConfig(int pruneGraceDays) {
+        public ScipConfig {
+            if (pruneGraceDays <= 0) pruneGraceDays = 7;
+        }
+    }
+
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record McpAuthConfig(List<ApiKeyEntry> apiKeys, OAuthConfig oauth, PermissionsConfig permissions) {
         public McpAuthConfig {
@@ -103,6 +110,7 @@ public record IndexerConfig(
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
         if (branches == null) branches = new BranchConfig(true, 14, 24);
+        if (scip == null) scip = new ScipConfig(7);
         if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of(), null, null);
     }
 }

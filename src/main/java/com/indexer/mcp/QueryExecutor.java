@@ -723,17 +723,17 @@ public class QueryExecutor {
 
             // Per-repo stats
             var repos = handle.createQuery("""
-                    SELECT r.name AS repo_name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at,
+                    SELECT r.name AS repo_name, r.last_indexed_sha, r.scip_uploaded_at,
                            CASE
-                               WHEN r.scip_sha IS NULL THEN 'unavailable'
-                               WHEN r.scip_sha = r.last_indexed_sha THEN 'fresh'
+                               WHEN NOT EXISTS (SELECT 1 FROM scip_symbols s WHERE s.repo_id = r.id) THEN 'unavailable'
+                               WHEN EXISTS (SELECT 1 FROM scip_symbols s WHERE s.repo_id = r.id AND s.upload_sha = r.last_indexed_sha) THEN 'fresh'
                                ELSE 'stale'
                            END AS scip_status,
                            COUNT(CASE WHEN ie.status = 'pending' THEN 1 END) AS pending_events,
                            COUNT(CASE WHEN ie.status = 'failed' THEN 1 END) AS failed_events
                     FROM repositories r
                     LEFT JOIN indexing_events ie ON ie.repo_name = r.name
-                    GROUP BY r.name, r.last_indexed_sha, r.scip_sha, r.scip_uploaded_at
+                    GROUP BY r.id, r.name, r.last_indexed_sha, r.scip_uploaded_at
                     ORDER BY r.name
                     """)
                     .mapToMap()
@@ -774,28 +774,31 @@ public class QueryExecutor {
     public String getScipStatus(String repoName) {
         if (repoName == null || repoName.isBlank()) return null;
         return jdbi.withHandle(handle -> {
-            var opt = handle.createQuery("""
-                    SELECT scip_sha, last_indexed_sha
-                    FROM repositories WHERE name = :name
-                    """)
-                    .bind("name", repoName)
-                    .mapToMap()
-                    .findOne();
-            if (opt.isEmpty()) return null;
-            var row = opt.get();
-            Object scipSha = row.get("scip_sha");
-            Object indexedSha = row.get("last_indexed_sha");
-            if (scipSha == null) return "unavailable";
-            return scipSha.equals(indexedSha) ? "fresh" : "stale";
+            var repo = handle.createQuery("SELECT id, last_indexed_sha FROM repositories WHERE name = :name")
+                    .bind("name", repoName).mapToMap().findOne();
+            if (repo.isEmpty()) return null;
+            int repoId = ((Number) repo.get().get("id")).intValue();
+            String indexedSha = (String) repo.get().get("last_indexed_sha");
+
+            boolean anyScip = handle.createQuery("SELECT EXISTS(SELECT 1 FROM scip_symbols WHERE repo_id = :id)")
+                    .bind("id", repoId).mapTo(Boolean.class).one();
+            if (!anyScip) return "unavailable";
+
+            boolean freshScip = indexedSha != null && handle.createQuery(
+                            "SELECT EXISTS(SELECT 1 FROM scip_symbols WHERE repo_id = :id AND upload_sha = :sha)")
+                    .bind("id", repoId).bind("sha", indexedSha).mapTo(Boolean.class).one();
+            return freshScip ? "fresh" : "stale";
         });
     }
 
     /**
      * Resolve a display name to SCIP symbol row(s). Returns the first match, optionally
-     * narrowed by file_path and kind.
+     * narrowed by file_path, kind, and upload_sha. When uploadSha is non-null, only rows
+     * for that SHA are considered — prevents cross-SHA non-determinism with multi-SHA data.
+     * @param uploadSha the resolved ref SHA to scope to; callers pass a non-null SHA (null/blank means unfiltered, used only as internal defensiveness).
      */
     private Map<String, Object> resolveScipSymbol(org.jdbi.v3.core.Handle handle,
-            int repoId, String symbolName, String filePath, String kind) {
+            int repoId, String symbolName, String filePath, String kind, String uploadSha) {
         var sb = new StringBuilder("""
                 SELECT scip_symbol, display_name, kind, documentation, file_path, start_line, end_line
                 FROM scip_symbols
@@ -805,6 +808,10 @@ public class QueryExecutor {
         params.put("repoId", repoId);
         params.put("symbolName", symbolName);
 
+        if (uploadSha != null && !uploadSha.isBlank()) {
+            sb.append(" AND upload_sha = :uploadSha");
+            params.put("uploadSha", uploadSha);
+        }
         if (filePath != null && !filePath.isBlank()) {
             sb.append(" AND file_path = :filePath");
             params.put("filePath", filePath);
@@ -834,9 +841,11 @@ public class QueryExecutor {
     /**
      * Recursively build a type hierarchy tree in one direction.
      * @param direction "up" follows from_symbol->to_symbol, "down" follows to_symbol->from_symbol
+     * @param uploadSha the resolved ref SHA; MUST be non-null — a null would make every "upload_sha = :uploadSha" predicate false and silently return empty.
      */
     private List<Map<String, Object>> traverseHierarchy(org.jdbi.v3.core.Handle handle,
-            int repoId, String scipSymbol, String direction, int maxDepth, int currentDepth) {
+            int repoId, String scipSymbol, String direction, int maxDepth, int currentDepth,
+            String uploadSha) {
         if (currentDepth >= maxDepth) return List.of();
 
         List<Map<String, Object>> edges;
@@ -845,9 +854,11 @@ public class QueryExecutor {
                     SELECT to_symbol AS related_symbol, kind AS relationship
                     FROM scip_relationships
                     WHERE repo_id = :repoId AND from_symbol = :symbol AND kind IN ('implements', 'extends')
+                    AND upload_sha = :uploadSha
                     """)
                     .bind("repoId", repoId)
                     .bind("symbol", scipSymbol)
+                    .bind("uploadSha", uploadSha)
                     .mapToMap()
                     .list();
         } else {
@@ -855,9 +866,11 @@ public class QueryExecutor {
                     SELECT from_symbol AS related_symbol, kind AS relationship
                     FROM scip_relationships
                     WHERE repo_id = :repoId AND to_symbol = :symbol AND kind IN ('implements', 'extends')
+                    AND upload_sha = :uploadSha
                     """)
                     .bind("repoId", repoId)
                     .bind("symbol", scipSymbol)
+                    .bind("uploadSha", uploadSha)
                     .mapToMap()
                     .list();
         }
@@ -868,14 +881,15 @@ public class QueryExecutor {
             String relationship = (String) edge.get("relationship");
 
             var node = new LinkedHashMap<String, Object>();
-            // Enrich with symbol metadata
+            // Enrich with symbol metadata — scoped to uploadSha to avoid findOne() throwing
             var symRow = handle.createQuery("""
                     SELECT display_name, kind, file_path, start_line, documentation
                     FROM scip_symbols
-                    WHERE repo_id = :repoId AND scip_symbol = :symbol
+                    WHERE repo_id = :repoId AND scip_symbol = :symbol AND upload_sha = :uploadSha
                     """)
                     .bind("repoId", repoId)
                     .bind("symbol", relatedSymbol)
+                    .bind("uploadSha", uploadSha)
                     .mapToMap()
                     .findOne();
 
@@ -890,9 +904,10 @@ public class QueryExecutor {
             }
             node.put("relationship", relationship);
 
-            // Recurse
+            // Recurse — pass uploadSha through
             String childKey = "up".equals(direction) ? "supertypes" : "subtypes";
-            var children = traverseHierarchy(handle, repoId, relatedSymbol, direction, maxDepth, currentDepth + 1);
+            var children = traverseHierarchy(handle, repoId, relatedSymbol, direction, maxDepth,
+                    currentDepth + 1, uploadSha);
             if (!children.isEmpty()) {
                 node.put(childKey, children);
             }
@@ -904,13 +919,16 @@ public class QueryExecutor {
 
     /**
      * Get the type hierarchy for a symbol — supertypes, subtypes, or both.
+     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → main)
      */
     public Map<String, Object> getTypeHierarchy(String repo, String symbolName, String filePath,
-            String kind, String direction, int depth) {
+            String kind, String direction, int depth, String branch) {
         if (direction == null || direction.isBlank()) direction = "both";
         if (depth <= 0) depth = 3;
         final String dir = direction;
         final int maxDepth = depth;
+
+        ensureBranchIndexed(repo, resolveBranch(branch));
 
         return jdbi.withHandle(handle -> {
             int repoId = resolveRepoId(handle, repo);
@@ -918,7 +936,17 @@ public class QueryExecutor {
                 return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
             }
 
-            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, kind);
+            String uploadSha = resolveRefSha(handle, repoId, branch);
+            if (uploadSha == null) {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("symbol", symbolName);
+                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch) + "'");
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) result.put("scip_status", scipStatus);
+                return result;
+            }
+
+            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, kind, uploadSha);
             if (resolved == null) {
                 var result = new LinkedHashMap<String, Object>();
                 result.put("symbol", symbolName);
@@ -941,10 +969,10 @@ public class QueryExecutor {
             }
 
             if ("up".equals(dir) || "both".equals(dir)) {
-                result.put("supertypes", traverseHierarchy(handle, repoId, scipSymbol, "up", maxDepth, 0));
+                result.put("supertypes", traverseHierarchy(handle, repoId, scipSymbol, "up", maxDepth, 0, uploadSha));
             }
             if ("down".equals(dir) || "both".equals(dir)) {
-                result.put("subtypes", traverseHierarchy(handle, repoId, scipSymbol, "down", maxDepth, 0));
+                result.put("subtypes", traverseHierarchy(handle, repoId, scipSymbol, "down", maxDepth, 0, uploadSha));
             }
 
             String scipStatus = getScipStatus(repo);
@@ -957,13 +985,16 @@ public class QueryExecutor {
     /**
      * Find symbols related to a given symbol through SCIP relationships.
      * Flat list of direct edges (not recursive).
+     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → main)
      */
     public Map<String, Object> getSymbolReferences(String repo, String symbolName, String filePath,
-            String relationshipKind, String direction, int limit) {
+            String relationshipKind, String direction, int limit, String branch) {
         if (direction == null || direction.isBlank()) direction = "inbound";
         if (limit <= 0) limit = 50;
         final String dir = direction;
         final int maxResults = limit;
+
+        ensureBranchIndexed(repo, resolveBranch(branch));
 
         return jdbi.withHandle(handle -> {
             int repoId = resolveRepoId(handle, repo);
@@ -971,7 +1002,17 @@ public class QueryExecutor {
                 return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
             }
 
-            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, null);
+            String uploadSha = resolveRefSha(handle, repoId, branch);
+            if (uploadSha == null) {
+                var result = new LinkedHashMap<String, Object>();
+                result.put("symbol", symbolName);
+                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch) + "'");
+                String scipStatus = getScipStatus(repo);
+                if (scipStatus != null) result.put("scip_status", scipStatus);
+                return result;
+            }
+
+            var resolved = resolveScipSymbol(handle, repoId, symbolName, filePath, null, uploadSha);
             if (resolved == null) {
                 var result = new LinkedHashMap<String, Object>();
                 result.put("symbol", symbolName);
@@ -990,11 +1031,12 @@ public class QueryExecutor {
                 var sb = new StringBuilder("""
                         SELECT sr.from_symbol, sr.kind AS relationship, sr.file_path, sr.line
                         FROM scip_relationships sr
-                        WHERE sr.repo_id = :repoId AND sr.to_symbol = :symbol
+                        WHERE sr.repo_id = :repoId AND sr.to_symbol = :symbol AND sr.upload_sha = :uploadSha
                         """);
                 var params = new LinkedHashMap<String, Object>();
                 params.put("repoId", repoId);
                 params.put("symbol", scipSymbol);
+                params.put("uploadSha", uploadSha);
                 if (relationshipKind != null && !relationshipKind.isBlank()) {
                     sb.append(" AND sr.kind = :kind");
                     params.put("kind", relationshipKind);
@@ -1007,13 +1049,14 @@ public class QueryExecutor {
                 for (var row : q.mapToMap().list()) {
                     var ref = new LinkedHashMap<String, Object>();
                     String fromSymbol = (String) row.get("from_symbol");
-                    // Enrich with symbol metadata
+                    // Enrich with symbol metadata — scoped to uploadSha to avoid findOne() throwing
                     var symRow = handle.createQuery("""
                             SELECT display_name, kind FROM scip_symbols
-                            WHERE repo_id = :repoId AND scip_symbol = :symbol
+                            WHERE repo_id = :repoId AND scip_symbol = :symbol AND upload_sha = :uploadSha
                             """)
                             .bind("repoId", repoId)
                             .bind("symbol", fromSymbol)
+                            .bind("uploadSha", uploadSha)
                             .mapToMap()
                             .findOne();
                     if (symRow.isPresent()) {
@@ -1034,11 +1077,12 @@ public class QueryExecutor {
                 var sb = new StringBuilder("""
                         SELECT sr.to_symbol, sr.kind AS relationship, sr.file_path, sr.line
                         FROM scip_relationships sr
-                        WHERE sr.repo_id = :repoId AND sr.from_symbol = :symbol
+                        WHERE sr.repo_id = :repoId AND sr.from_symbol = :symbol AND sr.upload_sha = :uploadSha
                         """);
                 var params = new LinkedHashMap<String, Object>();
                 params.put("repoId", repoId);
                 params.put("symbol", scipSymbol);
+                params.put("uploadSha", uploadSha);
                 if (relationshipKind != null && !relationshipKind.isBlank()) {
                     sb.append(" AND sr.kind = :kind");
                     params.put("kind", relationshipKind);
@@ -1051,12 +1095,14 @@ public class QueryExecutor {
                 for (var row : q.mapToMap().list()) {
                     var ref = new LinkedHashMap<String, Object>();
                     String toSymbol = (String) row.get("to_symbol");
+                    // Enrich — scoped to uploadSha to avoid findOne() throwing
                     var symRow = handle.createQuery("""
                             SELECT display_name, kind FROM scip_symbols
-                            WHERE repo_id = :repoId AND scip_symbol = :symbol
+                            WHERE repo_id = :repoId AND scip_symbol = :symbol AND upload_sha = :uploadSha
                             """)
                             .bind("repoId", repoId)
                             .bind("symbol", toSymbol)
+                            .bind("uploadSha", uploadSha)
                             .mapToMap()
                             .findOne();
                     if (symRow.isPresent()) {
@@ -1612,6 +1658,20 @@ public class QueryExecutor {
      */
     private String resolveBranch(String branch) {
         return (branch == null || branch.isBlank()) ? "main" : branch;
+    }
+
+    /**
+     * Resolve a ref (branch/tag/sha) to the indexed commit SHA whose SCIP we should read.
+     * main -> repositories.last_indexed_sha; any other ref -> branch_index.indexed_sha.
+     */
+    private String resolveRefSha(org.jdbi.v3.core.Handle handle, int repoId, String branch) {
+        String effective = resolveBranch(branch);
+        if ("main".equals(effective)) {
+            return handle.createQuery("SELECT last_indexed_sha FROM repositories WHERE id = :id")
+                    .bind("id", repoId).mapTo(String.class).findOne().orElse(null);
+        }
+        return handle.createQuery("SELECT indexed_sha FROM branch_index WHERE repo_id = :id AND branch = :b")
+                .bind("id", repoId).bind("b", effective).mapTo(String.class).findOne().orElse(null);
     }
 
     /**
