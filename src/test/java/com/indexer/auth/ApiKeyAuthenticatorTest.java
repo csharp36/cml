@@ -9,7 +9,7 @@ class ApiKeyAuthenticatorTest {
 
     @Test
     void authenticatesValidKey() {
-        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false));
+        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false, List.of()));
         var authenticator = new ApiKeyAuthenticator(keys);
         var result = authenticator.authenticate("secret-key-123", "10.0.0.1");
         assertThat(result).isPresent();
@@ -20,15 +20,23 @@ class ApiKeyAuthenticatorTest {
     }
 
     @Test
+    void authenticatedIdentityCarriesConfiguredRepos() {
+        var auth = new ApiKeyAuthenticator(List.of(
+                new ApiKeyAuthenticator.ApiKeyConfig("k1", "ci-a", "CI A", false, false, List.of("repo-a"))));
+        var id = auth.authenticate("k1", "10.0.0.1").orElseThrow();
+        assertThat(id.allowedRepos()).containsExactly("repo-a");
+    }
+
+    @Test
     void rejectsInvalidKey() {
-        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false));
+        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false, List.of()));
         var authenticator = new ApiKeyAuthenticator(keys);
         assertThat(authenticator.authenticate("wrong-key", "10.0.0.1")).isEmpty();
     }
 
     @Test
     void rejectsNullKey() {
-        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false));
+        var keys = List.of(new ApiKeyAuthenticator.ApiKeyConfig("secret-key-123", "team-payments", "Payments Team", false, false, List.of()));
         var authenticator = new ApiKeyAuthenticator(keys);
         assertThat(authenticator.authenticate(null, "10.0.0.1")).isEmpty();
     }
@@ -36,8 +44,8 @@ class ApiKeyAuthenticatorTest {
     @Test
     void supportsMultipleKeys() {
         var keys = List.of(
-                new ApiKeyAuthenticator.ApiKeyConfig("key-alpha", "alice", "Alice Chen", false, false),
-                new ApiKeyAuthenticator.ApiKeyConfig("key-beta", "bob", "Bob Smith", false, false)
+                new ApiKeyAuthenticator.ApiKeyConfig("key-alpha", "alice", "Alice Chen", false, false, List.of()),
+                new ApiKeyAuthenticator.ApiKeyConfig("key-beta", "bob", "Bob Smith", false, false, List.of())
         );
         var authenticator = new ApiKeyAuthenticator(keys);
         assertThat(authenticator.authenticate("key-alpha", "1.1.1.1").get().userId()).isEqualTo("alice");
@@ -46,7 +54,7 @@ class ApiKeyAuthenticatorTest {
 
     @Test
     void isEnabledWithKeys() {
-        var authenticator = new ApiKeyAuthenticator(List.of(new ApiKeyAuthenticator.ApiKeyConfig("key", "id", "name", false, false)));
+        var authenticator = new ApiKeyAuthenticator(List.of(new ApiKeyAuthenticator.ApiKeyConfig("key", "id", "name", false, false, List.of())));
         assertThat(authenticator.isEnabled()).isTrue();
     }
 

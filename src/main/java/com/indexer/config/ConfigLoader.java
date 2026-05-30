@@ -195,7 +195,15 @@ public class ConfigLoader {
                 if (key != null && id != null) {
                     boolean auditReader = keyNode.has("auditReader") && keyNode.get("auditReader").asBoolean(false);
                     boolean scipUpload = keyNode.has("scipUpload") && keyNode.get("scipUpload").asBoolean(false);
-                    keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(key, id, name != null ? name : id, auditReader, scipUpload));
+                    List<String> repos = new ArrayList<>();
+                    JsonNode reposNode = keyNode.get("repos");
+                    if (reposNode != null && reposNode.isArray()) {
+                        for (JsonNode r : reposNode) {
+                            if (r.isTextual() && !r.asText().isBlank()) repos.add(r.asText());
+                        }
+                    }
+                    keys.add(new IndexerConfig.McpAuthConfig.ApiKeyEntry(
+                            key, id, name != null ? name : id, auditReader, scipUpload, repos));
                 }
             }
         }
