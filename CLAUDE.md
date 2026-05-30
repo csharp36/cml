@@ -400,7 +400,18 @@ auth:
       id: ci-pipeline
       name: CI Pipeline
       scipUpload: true
+      repos: ["*"]          # query scope — see "API key authorization" below
 ```
+
+### API key authorization (per-repo scoping)
+
+API keys are **scoped per key** for read/query access via the `repos:` field, mirroring the OAuth per-repo entitlement model (groups → allowed repos). This ensures the shared indexer never exposes a repo's code (source, symbols, file tree, search) to a remote caller who isn't entitled to it — regardless of auth method.
+
+- `repos: ["*"]` — full read access to all indexed repos (explicit, auditable).
+- `repos: [backend-api, data-pipeline]` — restricts the key to those repos.
+- **`repos:` omitted → the key is denied all queries (fail-closed)** — every key must declare its scope. (Migration note: existing keys must add `repos:` or they will be denied.)
+
+Authorization is enforced centrally in `QueryExecutor.executeQuery`, the single choke point for all repo-scoped MCP tools. Repo-less/system tools (`get_index_health`, `query_audit_log`, `verify_audit_chain`) require a `["*"]` key — same as OAuth callers, which cannot call them. The local **stdio** transport (a subprocess run as the OS user) is trusted and unscoped. **SCIP upload** (`POST /api/scip/{repoName}`) is a separate write path gated by the `scipUpload` flag and the repo name in the URL, not by `repos:`.
 
 ### Upload Endpoint
 
