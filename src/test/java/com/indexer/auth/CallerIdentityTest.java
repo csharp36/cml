@@ -16,6 +16,19 @@ class CallerIdentityTest {
     }
 
     @Test
+    void fromApiKeyCarriesAllowedRepos() {
+        var id = CallerIdentity.fromApiKey("ci-a", "CI A", "10.0.0.1", false, false, List.of("repo-a", "repo-b"));
+        assertThat(id.authMethod()).isEqualTo("api-key");
+        assertThat(id.allowedRepos()).containsExactly("repo-a", "repo-b");
+    }
+
+    @Test
+    void nonApiKeyIdentitiesHaveEmptyAllowedRepos() {
+        assertThat(CallerIdentity.fromStdio().allowedRepos()).isEmpty();
+        assertThat(CallerIdentity.fromOAuth("u", "U", List.of("g"), "ip").allowedRepos()).isEmpty();
+    }
+
+    @Test
     void anonymousHasNoAuth() {
         var identity = CallerIdentity.anonymous("streamable-http");
         assertThat(identity.userId()).isNull();

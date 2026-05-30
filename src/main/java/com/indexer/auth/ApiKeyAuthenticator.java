@@ -16,7 +16,8 @@ public class ApiKeyAuthenticator {
 
     private final List<ApiKeyConfig> apiKeys;
 
-    public record ApiKeyConfig(String key, String id, String name, boolean auditReader, boolean scipUpload) {}
+    public record ApiKeyConfig(String key, String id, String name, boolean auditReader,
+                               boolean scipUpload, List<String> repos) {}
 
     public ApiKeyAuthenticator(List<ApiKeyConfig> apiKeys) {
         this.apiKeys = apiKeys != null ? apiKeys : List.of();
@@ -50,7 +51,8 @@ public class ApiKeyAuthenticator {
         }
         for (var keyConfig : apiKeys) {
             if (constantTimeEquals(keyConfig.key(), bearerToken)) {
-                return Optional.of(CallerIdentity.fromApiKey(keyConfig.id(), keyConfig.name(), sourceIp, keyConfig.auditReader(), keyConfig.scipUpload()));
+                return Optional.of(CallerIdentity.fromApiKey(keyConfig.id(), keyConfig.name(), sourceIp,
+                        keyConfig.auditReader(), keyConfig.scipUpload(), keyConfig.repos()));
             }
         }
         return Optional.empty();

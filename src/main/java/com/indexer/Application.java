@@ -116,7 +116,7 @@ public class Application {
 
             // 5b. Set up API key authenticator
             var apiKeyConfigs = config.mcpAuth().apiKeys().stream()
-                    .map(e -> new ApiKeyAuthenticator.ApiKeyConfig(e.key(), e.id(), e.name(), e.auditReader(), e.scipUpload()))
+                    .map(e -> new ApiKeyAuthenticator.ApiKeyConfig(e.key(), e.id(), e.name(), e.auditReader(), e.scipUpload(), e.repos()))
                     .toList();
             var authenticator = new ApiKeyAuthenticator(apiKeyConfigs);
 
