@@ -35,7 +35,7 @@ class RepositoryManagerTest {
                 "https://github.com/org/myrepo.git", "main", auth, null);
         var server = new IndexerConfig.ServerConfig(baseDir.toString(), 1_048_576, 4, 8080);
         var database = new IndexerConfig.DatabaseConfig("localhost", 5432, "db", "u", "p");
-        var config = new IndexerConfig(server, database, List.of(repoConfig), null, null, null, null);
+        var config = new IndexerConfig(server, database, List.of(repoConfig), null, null, null, null, null);
 
         var authRegistry = mock(AuthProviderRegistry.class);
         when(authRegistry.resolve(any())).thenReturn(GitCredentials.token("ghp_x"));
