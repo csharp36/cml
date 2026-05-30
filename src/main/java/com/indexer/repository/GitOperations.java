@@ -9,6 +9,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 public class GitOperations {
@@ -24,8 +25,12 @@ public class GitOperations {
         runCommand(cmd, null, creds);
     }
 
+    /**
+     * Fetches from origin, pruning stale remote-tracking branches and fetching all tags.
+     * Note: all remote tags are fetched on every call (needed for release-ref resolution).
+     */
     public void fetch(Path repoDir, GitCredentials creds) throws IOException {
-        List<String> cmd = List.of("git", "fetch", "--prune");
+        List<String> cmd = List.of("git", "fetch", "--prune", "--tags");
         runCommand(cmd, repoDir, creds);
     }
 
@@ -138,6 +143,38 @@ public class GitOperations {
     public String getShaForRef(Path repoDir, String ref) throws IOException {
         List<String> cmd = List.of("git", "rev-parse", ref);
         return runCommandOutput(cmd, repoDir, null).trim();
+    }
+
+    /** Resolved git ref: the commit SHA it points to, plus what kind of ref it was. */
+    public record ResolvedRef(String sha, RefKind kind) {}
+
+    /**
+     * Resolve an arbitrary ref to a commit SHA, trying remote branch, then tag, then
+     * raw commit-ish (full or abbreviated SHA), in that order. Returns empty if the ref
+     * is not resolvable locally (callers degrade to main-only results).
+     */
+    public Optional<ResolvedRef> resolveAnyRef(Path repoDir, String ref) {
+        Optional<String> sha = tryRevParse(repoDir, "refs/remotes/origin/" + ref);
+        if (sha.isPresent()) return Optional.of(new ResolvedRef(sha.get(), RefKind.BRANCH));
+
+        sha = tryRevParse(repoDir, "refs/tags/" + ref + "^{commit}");
+        if (sha.isPresent()) return Optional.of(new ResolvedRef(sha.get(), RefKind.TAG));
+
+        sha = tryRevParse(repoDir, ref + "^{commit}");
+        if (sha.isPresent()) return Optional.of(new ResolvedRef(sha.get(), RefKind.SHA));
+
+        return Optional.empty();
+    }
+
+    /** {@code git rev-parse --verify --quiet <spec>}; empty when the spec doesn't resolve. */
+    private Optional<String> tryRevParse(Path repoDir, String spec) {
+        try {
+            String out = runCommandOutput(List.of("git", "rev-parse", "--verify", "--quiet", spec), repoDir, null).trim();
+            return out.isEmpty() ? Optional.empty() : Optional.of(out);
+        } catch (IOException e) {
+            log.debug("rev-parse failed for spec '{}': {}", spec, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     // --- helpers ---
