@@ -323,6 +323,20 @@ branches:
   cleanupIntervalHours: 24  # How often the cleanup task runs
 ```
 
+### Any ref: branches, tags, and commit SHAs
+
+The `branch` parameter on every branch-aware tool accepts **any git ref** — a
+remote branch name, a tag (e.g. `v2.3.1`), or a commit SHA. On first query the
+indexer resolves it (remote branch → tag → raw commit) and faults it in as a
+copy-on-write overlay vs `main`, exactly like a feature branch. The ref kind
+(branch / tag / SHA) is recorded in `branch_index.ref_kind`. This powers the
+"debug a production release by tag or SHA, with no local checkout" workflow:
+pass the release tag as `branch` to any query or to `diff_branches`.
+
+Tags and SHAs are immutable, so once indexed they never need re-indexing.
+(Retention/pinning of tag indexes is handled separately — see the tagged-release
+design.)
+
 ## Admin API
 
 REST endpoints under `/admin/*` for operational management. Requires bearer token authentication.
