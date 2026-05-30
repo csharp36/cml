@@ -61,7 +61,9 @@ class RefFaultInIntegrationTest {
         // - HEAD is reset back to the first commit, so main only sees App.java
         repoDir = tempDir.resolve("repo");
         Files.createDirectories(repoDir);
-        git("init");
+        // -b main so the repo's default branch is 'main' regardless of the host's
+        // init.defaultBranch (CI runners default to 'master'); diffFromMain assumes 'main'.
+        git("init", "-b", "main");
         git("config", "user.email", "t@e.com");
         git("config", "user.name", "T");
         git("config", "commit.gpgsign", "false");

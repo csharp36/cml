@@ -61,7 +61,9 @@ class IndexingPipelineIntegrationTest {
     void indexesNewFilesOnFullIndex() throws Exception {
         Path repoDir = tempDir.resolve("test-repo");
         Files.createDirectories(repoDir);
-        new ProcessBuilder("git", "init").directory(repoDir.toFile()).start().waitFor();
+        // -b main so the repo's default branch is 'main' regardless of the host's
+        // init.defaultBranch (CI runners default to 'master'); diffFromMain assumes 'main'.
+        new ProcessBuilder("git", "init", "-b", "main").directory(repoDir.toFile()).start().waitFor();
         new ProcessBuilder("git", "config", "user.email", "t@t.com").directory(repoDir.toFile()).start().waitFor();
         new ProcessBuilder("git", "config", "user.name", "T").directory(repoDir.toFile()).start().waitFor();
 
@@ -94,7 +96,7 @@ class IndexingPipelineIntegrationTest {
     void branchIndexRecordsRefKindForTag() throws Exception {
         Path repoDir = tempDir.resolve("tag-repo");
         Files.createDirectories(repoDir);
-        new ProcessBuilder("git", "init").directory(repoDir.toFile()).start().waitFor();
+        new ProcessBuilder("git", "init", "-b", "main").directory(repoDir.toFile()).start().waitFor();
         new ProcessBuilder("git", "config", "user.email", "t@t.com").directory(repoDir.toFile()).start().waitFor();
         new ProcessBuilder("git", "config", "user.name", "T").directory(repoDir.toFile()).start().waitFor();
 
