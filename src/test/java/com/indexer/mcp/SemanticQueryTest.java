@@ -118,7 +118,7 @@ class SemanticQueryTest {
     @Test
     @SuppressWarnings("unchecked")
     void getTypeHierarchyBothDirections() {
-        var result = queryExecutor.getTypeHierarchy("test-repo", "PaymentProcessor", null, null, "both", 3);
+        var result = queryExecutor.getTypeHierarchy("test-repo", "PaymentProcessor", null, null, "both", 3, null);
         assertThat(result.get("symbol")).isEqualTo("PaymentProcessor");
         assertThat(result.get("kind")).isEqualTo("Interface");
         assertThat(result.get("scip_status")).isEqualTo("fresh");
@@ -136,7 +136,7 @@ class SemanticQueryTest {
     @Test
     @SuppressWarnings("unchecked")
     void getTypeHierarchyUpDirection() {
-        var result = queryExecutor.getTypeHierarchy("test-repo", "StripeProcessor", null, null, "up", 3);
+        var result = queryExecutor.getTypeHierarchy("test-repo", "StripeProcessor", null, null, "up", 3, null);
         assertThat(result.get("symbol")).isEqualTo("StripeProcessor");
 
         var supertypes = (List<Map<String, Object>>) result.get("supertypes");
@@ -149,7 +149,7 @@ class SemanticQueryTest {
 
     @Test
     void getTypeHierarchySymbolNotFound() {
-        var result = queryExecutor.getTypeHierarchy("test-repo", "NonExistent", null, null, "both", 3);
+        var result = queryExecutor.getTypeHierarchy("test-repo", "NonExistent", null, null, "both", 3, null);
         assertThat(result.get("message")).isEqualTo("Symbol not found in SCIP data");
         assertThat(result.get("scip_status")).isEqualTo("fresh");
     }
@@ -157,7 +157,7 @@ class SemanticQueryTest {
     @Test
     @SuppressWarnings("unchecked")
     void getSymbolReferencesInbound() {
-        var result = queryExecutor.getSymbolReferences("test-repo", "PaymentProcessor", null, null, "inbound", 50);
+        var result = queryExecutor.getSymbolReferences("test-repo", "PaymentProcessor", null, null, "inbound", 50, null);
         assertThat(result.get("symbol")).isEqualTo("PaymentProcessor");
 
         var refs = (List<Map<String, Object>>) result.get("references");
@@ -171,7 +171,7 @@ class SemanticQueryTest {
     @Test
     @SuppressWarnings("unchecked")
     void getSymbolReferencesOutbound() {
-        var result = queryExecutor.getSymbolReferences("test-repo", "StripeProcessor", null, null, "outbound", 50);
+        var result = queryExecutor.getSymbolReferences("test-repo", "StripeProcessor", null, null, "outbound", 50, null);
 
         var refs = (List<Map<String, Object>>) result.get("references");
         assertThat(refs).hasSize(2);
@@ -183,7 +183,7 @@ class SemanticQueryTest {
     @Test
     @SuppressWarnings("unchecked")
     void getSymbolReferencesFilterByKind() {
-        var result = queryExecutor.getSymbolReferences("test-repo", "PaymentProcessor", null, "implements", "inbound", 50);
+        var result = queryExecutor.getSymbolReferences("test-repo", "PaymentProcessor", null, "implements", "inbound", 50, null);
 
         var refs = (List<Map<String, Object>>) result.get("references");
         assertThat(refs).hasSize(2);
@@ -192,7 +192,134 @@ class SemanticQueryTest {
 
     @Test
     void getSymbolReferencesNotFound() {
-        var result = queryExecutor.getSymbolReferences("test-repo", "NonExistent", null, null, "inbound", 50);
+        var result = queryExecutor.getSymbolReferences("test-repo", "NonExistent", null, null, "inbound", 50, null);
         assertThat(result.get("message")).isEqualTo("Symbol not found in SCIP data");
+    }
+
+    // -----------------------------------------------------------------------
+    // Ref-aware SCIP query tests (Task 4)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Seed a second SHA for the same repo with different relationships, plus a
+     * branch_index row pointing tag 'v1.0' → 'tagsha'.
+     * Under 'abc123': StripeProcessor implements PaymentProcessor + Serializable
+     * Under 'tagsha':  StripeProcessor implements LegacyPaymentInterface (different interface)
+     */
+    private void seedTagShaData() {
+        jdbi.useHandle(handle -> {
+            int repoId = handle.createQuery("SELECT id FROM repositories WHERE name = 'test-repo'")
+                    .mapTo(Integer.class).one();
+
+            // Second symbol for the same display_name but under tagsha
+            handle.execute("""
+                    INSERT INTO scip_symbols (repo_id, scip_symbol, display_name, kind, file_path, start_line, end_line, upload_sha)
+                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'StripeProcessor', 'Class', 'src/StripeProcessor.java', 5, 50, 'tagsha')
+                    """, repoId);
+            handle.execute("""
+                    INSERT INTO scip_symbols (repo_id, scip_symbol, display_name, kind, documentation, file_path, start_line, end_line, upload_sha)
+                    VALUES (?, 'java maven . com/example/LegacyPaymentInterface#.', 'LegacyPaymentInterface', 'Interface', 'Legacy payment interface', 'src/LegacyPaymentInterface.java', 1, 10, 'tagsha')
+                    """, repoId);
+
+            // tagsha relationship: StripeProcessor implements LegacyPaymentInterface (NOT PaymentProcessor)
+            handle.execute("""
+                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line, upload_sha)
+                    VALUES (?, 'java maven . com/example/StripeProcessor#.', 'java maven . com/example/LegacyPaymentInterface#.', 'implements', 'src/StripeProcessor.java', 5, 'tagsha')
+                    """, repoId);
+
+            // branch_index row pointing v1.0 tag → tagsha
+            handle.execute("""
+                    INSERT INTO branch_index (repo_id, branch, base_sha, indexed_sha)
+                    VALUES (?, 'v1.0', 'abc123', 'tagsha')
+                    """, repoId);
+        });
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getTypeHierarchyRefAware_mainSeesAbcRelationships() {
+        seedTagShaData();
+
+        // branch=null → main → upload_sha='abc123'
+        var result = queryExecutor.getTypeHierarchy("test-repo", "StripeProcessor", null, null, "up", 3, null);
+        assertThat(result.get("symbol")).isEqualTo("StripeProcessor");
+
+        var supertypes = (List<Map<String, Object>>) result.get("supertypes");
+        // abc123 has StripeProcessor implements PaymentProcessor + Serializable
+        assertThat(supertypes).extracting(m -> m.get("symbol"))
+                .containsExactlyInAnyOrder("PaymentProcessor", "Serializable");
+        // LegacyPaymentInterface only exists in tagsha, must NOT appear here
+        assertThat(supertypes).extracting(m -> m.get("symbol"))
+                .doesNotContain("LegacyPaymentInterface");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getTypeHierarchyRefAware_tagSeesTagRelationships() {
+        seedTagShaData();
+
+        // branch='v1.0' → indexed_sha='tagsha'
+        var result = queryExecutor.getTypeHierarchy("test-repo", "StripeProcessor", null, null, "up", 3, "v1.0");
+        assertThat(result.get("symbol")).isEqualTo("StripeProcessor");
+
+        var supertypes = (List<Map<String, Object>>) result.get("supertypes");
+        // tagsha has StripeProcessor implements LegacyPaymentInterface only
+        assertThat(supertypes).extracting(m -> m.get("symbol"))
+                .containsExactly("LegacyPaymentInterface");
+        // PaymentProcessor and Serializable are abc123-only, must NOT appear
+        assertThat(supertypes).extracting(m -> m.get("symbol"))
+                .doesNotContain("PaymentProcessor", "Serializable");
+    }
+
+    @Test
+    void getTypeHierarchyRefAware_unknownRefReturnsNotFound() {
+        seedTagShaData();
+
+        // 'no-such-ref' resolves to null SHA → not-found shape, no crash
+        var result = queryExecutor.getTypeHierarchy("test-repo", "StripeProcessor", null, null, "up", 3, "no-such-ref");
+        assertThat(result.get("message")).isEqualTo("No SCIP data indexed for ref 'no-such-ref'");
+        assertThat(result).containsKey("symbol");
+        // Must not throw
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getSymbolReferencesRefAware_mainSeesAbcRelationships() {
+        seedTagShaData();
+
+        // branch=null → main → upload_sha='abc123'
+        var result = queryExecutor.getSymbolReferences("test-repo", "StripeProcessor", null, null, "outbound", 50, null);
+        var refs = (List<Map<String, Object>>) result.get("references");
+        // abc123: StripeProcessor → PaymentProcessor + Serializable
+        assertThat(refs).extracting(m -> m.get("symbol"))
+                .containsExactlyInAnyOrder("PaymentProcessor", "Serializable");
+        assertThat(refs).extracting(m -> m.get("symbol"))
+                .doesNotContain("LegacyPaymentInterface");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getSymbolReferencesRefAware_tagSeesTagRelationships() {
+        seedTagShaData();
+
+        // branch='v1.0' → indexed_sha='tagsha'
+        var result = queryExecutor.getSymbolReferences("test-repo", "StripeProcessor", null, null, "outbound", 50, "v1.0");
+        var refs = (List<Map<String, Object>>) result.get("references");
+        // tagsha: StripeProcessor → LegacyPaymentInterface only
+        assertThat(refs).extracting(m -> m.get("symbol"))
+                .containsExactly("LegacyPaymentInterface");
+        assertThat(refs).extracting(m -> m.get("symbol"))
+                .doesNotContain("PaymentProcessor", "Serializable");
+    }
+
+    @Test
+    void getSymbolReferencesRefAware_unknownRefReturnsNotFound() {
+        seedTagShaData();
+
+        // 'no-such-ref' resolves to null SHA → not-found shape, no crash
+        var result = queryExecutor.getSymbolReferences("test-repo", "StripeProcessor", null, null, "outbound", 50, "no-such-ref");
+        assertThat(result.get("message")).isEqualTo("No SCIP data indexed for ref 'no-such-ref'");
+        assertThat(result).containsKey("symbol");
+        // Must not throw
     }
 }

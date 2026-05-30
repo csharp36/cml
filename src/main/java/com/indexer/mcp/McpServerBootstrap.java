@@ -348,6 +348,7 @@ public class McpServerBootstrap {
         props.put("kind",        Map.of("type", "string", "description", "Filter by symbol kind (Class, Interface, etc.)"));
         props.put("direction",   Map.of("type", "string", "description", "Traversal direction: up (supertypes), down (subtypes), or both (default: both)"));
         props.put("depth",       Map.of("type", "integer", "description", "Max traversal depth (default: 3)", "default", 3));
+        props.put("branch",      Map.of("type", "string", "description", "Ref to resolve SCIP at: branch, tag, or commit SHA (default: main)"));
         var schema = new McpSchema.JsonSchema("object", props,
                 List.of("repo", "symbol_name"), false, null, null);
         return McpSchema.Tool.builder()
@@ -365,6 +366,7 @@ public class McpServerBootstrap {
         props.put("relationship_kind", Map.of("type", "string", "description", "Filter by relationship: implements, extends, references, or all (default: all)"));
         props.put("direction",         Map.of("type", "string", "description", "inbound (who references this), outbound (what this references), or both (default: inbound)"));
         props.put("limit",             Map.of("type", "integer", "description", "Max results (default: 50)", "default", 50));
+        props.put("branch",            Map.of("type", "string", "description", "Ref to resolve SCIP at: branch, tag, or commit SHA (default: main)"));
         var schema = new McpSchema.JsonSchema("object", props,
                 List.of("repo", "symbol_name"), false, null, null);
         return McpSchema.Tool.builder()
@@ -601,7 +603,8 @@ public class McpServerBootstrap {
                 () -> queryExecutor.getTypeHierarchy(
                         repo, stringArg(args, "symbol_name"),
                         stringArg(args, "file_path"), stringArg(args, "kind"),
-                        stringArg(args, "direction"), intArg(args, "depth", 3)));
+                        stringArg(args, "direction"), intArg(args, "depth", 3),
+                        stringArg(args, "branch")));
     }
 
     private McpSchema.CallToolResult handleGetSymbolReferences(
@@ -614,7 +617,8 @@ public class McpServerBootstrap {
                 () -> queryExecutor.getSymbolReferences(
                         repo, stringArg(args, "symbol_name"),
                         stringArg(args, "file_path"), stringArg(args, "relationship_kind"),
-                        stringArg(args, "direction"), intArg(args, "limit", 50)));
+                        stringArg(args, "direction"), intArg(args, "limit", 50),
+                        stringArg(args, "branch")));
     }
 
     private java.time.Instant parseInstant(String s) {
