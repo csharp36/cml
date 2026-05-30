@@ -64,10 +64,14 @@ Per `docs/proposals/2026-05-29-index-by-build-ref.md`: generalize ref resolution
 `ensureBranchIndexed` (`origin/<ref>` → `refs/tags/<ref>` → raw SHA) and record the **ref kind** in
 `branch_index`. Storage/overlay are already ref-agnostic.
 
-### Phase 2 — Full-text parity at refs
+### Phase 2 — Full-text parity at refs ✅ verified (2026-05-30)
 
-Verify `search_code` resolves content through `effective_files` (ref-aware) rather than a `main`-only
-join; extend it if not. **Open verification item** — not yet confirmed in code.
+**Confirmed ref-aware, no extension needed.** `QueryExecutor.searchCode` already (a) calls
+`ensureBranchIndexed` (which faults in any ref after Phase 1), (b) builds on `effectiveFilesCte(branch)`,
+and (c) joins `file_contents fc JOIN effective_files ef ON fc.file_id = ef.id` — i.e. content is resolved
+through the overlay, not a `main`-only join. Regression tests added in `BranchQueryTest`
+(`searchCodeFindsBranchOnlyContentButNotOnMain`, `searchCodeBranchContentShadowsMainForSamePath`) lock
+ref-scoped full-text search and branch-over-main content shadowing.
 
 ### Phase 3 — SCIP retention by SHA
 
