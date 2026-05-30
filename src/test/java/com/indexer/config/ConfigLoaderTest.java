@@ -188,6 +188,40 @@ class ConfigLoaderTest {
         assertThat(config.repositories().get(0).webhookSecret()).isNull();
     }
 
+    @Test
+    void parsesApiKeyReposAllowList() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                auth:
+                  apiKeys:
+                    - key: scoped-key
+                      id: ci-a
+                      name: CI A
+                      repos: [repo-a, repo-b]
+                    - key: full-key
+                      id: admin
+                      name: Admin
+                      repos: ["*"]
+                    - key: bare-key
+                      id: legacy
+                      name: Legacy
+                """;
+        ConfigLoader loader = new ConfigLoader();
+        IndexerConfig config = loader.load(toStream(yaml));
+
+        var keys = config.mcpAuth().apiKeys();
+        assertThat(keys).hasSize(3);
+        assertThat(keys.get(0).repos()).containsExactly("repo-a", "repo-b");
+        assertThat(keys.get(1).repos()).containsExactly("*");
+        assertThat(keys.get(2).repos()).isEmpty(); // absent → empty (fail-closed)
+    }
+
     private InputStream toStream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }

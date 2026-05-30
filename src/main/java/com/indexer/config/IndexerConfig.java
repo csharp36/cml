@@ -89,7 +89,12 @@ public record IndexerConfig(
         public McpAuthConfig {
             if (apiKeys == null) apiKeys = List.of();
         }
-        public record ApiKeyEntry(String key, String id, String name, boolean auditReader, boolean scipUpload) {}
+        public record ApiKeyEntry(String key, String id, String name, boolean auditReader,
+                                  boolean scipUpload, List<String> repos) {
+            public ApiKeyEntry {
+                repos = repos != null ? List.copyOf(repos) : List.of();
+            }
+        }
         public record OAuthConfig(String jwksUrl, String issuer, String audience, String groupsClaim) {
             public OAuthConfig {
                 if (groupsClaim == null) groupsClaim = "groups";
