@@ -197,7 +197,7 @@ public class Application {
             var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache, auditSink);
             adminService = new AdminService(
                     repoManager, repositoryDao, fileDao, symbolDao,
-                    eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+                    eventDao, branchIndexDao, indexingPipeline, gitOps, queryExecutor, jdbi);
             String adminToken = config.admin() != null ? config.admin().token() : null;
             var adminApi = new AdminApi(adminService, adminToken, auditSink);
             httpServer.addRoutes(adminApi::registerRoutes);

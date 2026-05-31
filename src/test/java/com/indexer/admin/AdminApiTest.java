@@ -145,4 +145,47 @@ class AdminApiTest {
             assertThat(response.code()).isEqualTo(200);
         });
     }
+
+    @Test
+    void pinRefReturns200() {
+        when(adminService.pinRef("cml", "v1.0")).thenReturn(Map.of("repo", "cml", "ref", "v1.0", "pinned", true));
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.request("/admin/repos/cml/refs/v1.0/pin", builder ->
+                    builder.header("Authorization", "Bearer " + TOKEN)
+                            .post(HttpRequest.BodyPublishers.noBody()));
+            assertThat(response.code()).isEqualTo(200);
+            assertThat(response.body().string()).contains("\"pinned\":true");
+        });
+    }
+
+    @Test
+    void unpinRefReturns200() {
+        when(adminService.unpinRef("cml", "v1.0")).thenReturn(Map.of("repo", "cml", "ref", "v1.0", "pinned", false));
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.request("/admin/repos/cml/refs/v1.0/pin", builder ->
+                    builder.header("Authorization", "Bearer " + TOKEN)
+                            .delete(HttpRequest.BodyPublishers.noBody()));
+            assertThat(response.code()).isEqualTo(200);
+            assertThat(response.body().string()).contains("\"pinned\":false");
+        });
+    }
+
+    @Test
+    void pinUnknownRefReturns404() {
+        when(adminService.pinRef("cml", "ghost")).thenThrow(new AdminService.NotFoundException("Indexed ref not found: ghost"));
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.request("/admin/repos/cml/refs/ghost/pin", builder ->
+                    builder.header("Authorization", "Bearer " + TOKEN)
+                            .post(HttpRequest.BodyPublishers.noBody()));
+            assertThat(response.code()).isEqualTo(404);
+        });
+    }
+
+    @Test
+    void pinWithoutTokenReturns401() {
+        JavalinTest.test(app, (server, client) -> {
+            var response = client.post("/admin/repos/cml/refs/v1.0/pin", "");
+            assertThat(response.code()).isEqualTo(401);
+        });
+    }
 }

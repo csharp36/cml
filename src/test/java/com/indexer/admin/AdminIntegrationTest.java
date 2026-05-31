@@ -58,6 +58,7 @@ class AdminIntegrationTest {
         var fileDao = new FileDao(jdbi);
         var symbolDao = new SymbolDao(jdbi);
         var eventDao = new EventDao(jdbi);
+        var branchIndexDao = new BranchIndexDao(jdbi);
         var queryExecutor = new QueryExecutor(jdbi);
         var repoManager = mock(RepositoryManager.class);
         var indexingPipeline = mock(IndexingPipeline.class);
@@ -66,7 +67,7 @@ class AdminIntegrationTest {
 
         adminService = new AdminService(
                 repoManager, repositoryDao, fileDao, symbolDao,
-                eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+                eventDao, branchIndexDao, indexingPipeline, gitOps, queryExecutor, jdbi);
 
         try (var ss = new ServerSocket(0)) {
             port = ss.getLocalPort();

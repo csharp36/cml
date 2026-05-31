@@ -41,6 +41,8 @@ public class AdminApi {
         routes.post("/admin/repos/{name}/reindex", this::reindexRepo);
         routes.get("/admin/events", this::listEvents);
         routes.post("/admin/events/{id}/retry", this::retryEvent);
+        routes.post("/admin/repos/{name}/refs/{ref}/pin", this::pinRef);
+        routes.delete("/admin/repos/{name}/refs/{ref}/pin", this::unpinRef);
     }
 
     private void authenticate(Context ctx) {
@@ -170,6 +172,27 @@ public class AdminApi {
         } catch (AdminService.BadRequestException e) {
             auditAdminBestEffort(ctx, "admin:retryEvent", true, "error", e.getMessage());
             ctx.status(400).json(Map.of("error", e.getMessage()));
+        }
+    }
+
+    private void pinRef(Context ctx) {
+        handlePin(ctx, true, "admin:pin");
+    }
+
+    private void unpinRef(Context ctx) {
+        handlePin(ctx, false, "admin:unpin");
+    }
+
+    private void handlePin(Context ctx, boolean pinned, String action) {
+        String name = ctx.pathParam("name");
+        String ref = ctx.pathParam("ref");
+        try {
+            var result = pinned ? adminService.pinRef(name, ref) : adminService.unpinRef(name, ref);
+            auditAdminBestEffort(ctx, action, true, "success", null);
+            ctx.json(result);
+        } catch (AdminService.NotFoundException e) {
+            auditAdminBestEffort(ctx, action, true, "error", e.getMessage());
+            ctx.status(404).json(Map.of("error", e.getMessage()));
         }
     }
 

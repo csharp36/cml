@@ -27,6 +27,7 @@ public class AdminService {
     private final FileDao fileDao;
     private final SymbolDao symbolDao;
     private final EventDao eventDao;
+    private final BranchIndexDao branchIndexDao;
     private final IndexingPipeline indexingPipeline;
     private final GitOperations gitOps;
     private final QueryExecutor queryExecutor;
@@ -54,6 +55,7 @@ public class AdminService {
             FileDao fileDao,
             SymbolDao symbolDao,
             EventDao eventDao,
+            BranchIndexDao branchIndexDao,
             IndexingPipeline indexingPipeline,
             GitOperations gitOps,
             QueryExecutor queryExecutor,
@@ -63,6 +65,7 @@ public class AdminService {
         this.fileDao = fileDao;
         this.symbolDao = symbolDao;
         this.eventDao = eventDao;
+        this.branchIndexDao = branchIndexDao;
         this.indexingPipeline = indexingPipeline;
         this.gitOps = gitOps;
         this.queryExecutor = queryExecutor;
@@ -174,6 +177,24 @@ public class AdminService {
         });
 
         return Map.of("name", name, "status", "indexing");
+    }
+
+    public Map<String, Object> pinRef(String repoName, String ref) {
+        return setPinned(repoName, ref, true);
+    }
+
+    public Map<String, Object> unpinRef(String repoName, String ref) {
+        return setPinned(repoName, ref, false);
+    }
+
+    private Map<String, Object> setPinned(String repoName, String ref, boolean pinned) {
+        var repo = repositoryDao.findByName(repoName)
+                .orElseThrow(() -> new NotFoundException("Repository not found: " + repoName));
+        int updated = branchIndexDao.setPinned(repo.id(), ref, pinned);
+        if (updated == 0) {
+            throw new NotFoundException("Indexed ref not found: " + ref);
+        }
+        return Map.of("repo", repoName, "ref", ref, "pinned", pinned);
     }
 
     public List<com.indexer.model.IndexingEvent> listEvents(String repo, String status, Instant since, int limit) {

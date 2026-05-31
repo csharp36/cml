@@ -28,6 +28,7 @@ class AdminServiceTest {
     private FileDao fileDao;
     private SymbolDao symbolDao;
     private EventDao eventDao;
+    private BranchIndexDao branchIndexDao;
     private IndexingPipeline indexingPipeline;
     private GitOperations gitOps;
     private QueryExecutor queryExecutor;
@@ -40,6 +41,7 @@ class AdminServiceTest {
         fileDao = mock(FileDao.class);
         symbolDao = mock(SymbolDao.class);
         eventDao = mock(EventDao.class);
+        branchIndexDao = mock(BranchIndexDao.class);
         indexingPipeline = mock(IndexingPipeline.class);
         gitOps = mock(GitOperations.class);
         queryExecutor = mock(QueryExecutor.class);
@@ -49,7 +51,7 @@ class AdminServiceTest {
 
         adminService = new AdminService(
                 repoManager, repositoryDao, fileDao, symbolDao,
-                eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+                eventDao, branchIndexDao, indexingPipeline, gitOps, queryExecutor, jdbi);
     }
 
     @Test
