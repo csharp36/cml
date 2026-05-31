@@ -36,7 +36,10 @@ public class QueryExecutor {
     private final GitOperations gitOps;
     private final PermissionCache permissionCache;
     private final AuditSink auditSink;
-    private final java.util.concurrent.ConcurrentHashMap<String, String> baseBranchCache =
+    // Caches only the expensive origin/HEAD git detection (used when a repo's configured
+    // branch is blank). The configured branch itself is read fresh from the DB each call,
+    // so an admin delete+re-add with a different branch can never serve a stale base branch.
+    private final java.util.concurrent.ConcurrentHashMap<String, String> originHeadCache =
             new java.util.concurrent.ConcurrentHashMap<>();
 
     // Backward-compatible constructor (used in tests)
@@ -1660,30 +1663,24 @@ public class QueryExecutor {
     }
 
     /**
-     * The fully-indexed base branch for a repo: its configured {@code branch}, with a one-time
-     * {@code origin/HEAD} detection fallback, defaulting to "main" if neither is available
-     * (e.g. unit tests constructed with null DAOs). Cached — resolution is effectively static per repo.
+     * The fully-indexed base branch for a repo: its configured {@code branch}, read fresh from the
+     * DB each call (so it can never go stale relative to what was indexed), falling back to a cached
+     * one-time {@code origin/HEAD} detection when the configured branch is blank, then to "main" if
+     * neither is available (e.g. unit tests constructed with null DAOs).
      */
     private String baseBranch(String repo) {
-        if (repo == null || repo.isBlank()) return "main";
-        return baseBranchCache.computeIfAbsent(repo, r -> {
-            if (repositoryDao != null) {
-                var rec = repositoryDao.findByName(r);
-                if (rec.isPresent()) {
-                    String configured = rec.get().branch();
-                    if (configured != null && !configured.isBlank()) {
-                        return configured;
-                    }
-                    if (gitOps != null) {
-                        var detected = gitOps.detectDefaultBranch(java.nio.file.Path.of(rec.get().clonePath()));
-                        if (detected.isPresent()) {
-                            return detected.get();
-                        }
-                    }
-                }
-            }
-            return "main";
-        });
+        if (repo == null || repo.isBlank() || repositoryDao == null) return "main";
+        var rec = repositoryDao.findByName(repo);
+        if (rec.isEmpty()) return "main";
+
+        String configured = rec.get().branch();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        if (gitOps == null) return "main";
+        // Only the git detection is cached — keyed by repo, recomputed only on a cache miss.
+        return originHeadCache.computeIfAbsent(repo, r ->
+                gitOps.detectDefaultBranch(java.nio.file.Path.of(rec.get().clonePath())).orElse("main"));
     }
 
     /** Single-quote-escape a server-controlled identifier for safe inlining as a SQL string literal. */
