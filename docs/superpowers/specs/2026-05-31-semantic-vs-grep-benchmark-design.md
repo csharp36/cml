@@ -67,9 +67,29 @@ The feature and its correctness oracle come from a **real merged hazelcast PR**,
 - `gold_patch` = the PR's production changes (the reference solution, used for quality sanity-checks; never shown to the agent).
 - Apply `test_patch` on `base` → oracle tests are RED. Success = a production change that turns them GREEN.
 
+### Selected task instance (PR #4317)
+
+Chosen by applying the criteria above to hazelcast history (22 medium prod+test single-module PRs surveyed; #4317 selected for the strongest discovery stress with a clean behavioral oracle).
+
+- **PR:** hazelcast #4317 — *"Immutable put interceptor inputs [HZG-381]"*
+- **Merge commit (full PR):** `39c14ca464`
+- **`base` (parent / re-index + worktree SHA):** `b4d75e77eaa1`
+- **Module:** `hazelcast` (core)
+- **`gold_patch` (production — reference solution, never shown to the agent):**
+  - `hazelcast/src/main/java/com/hazelcast/map/MapInterceptor.java` (Javadoc contract only)
+  - `hazelcast/src/main/java/com/hazelcast/map/impl/MapServiceContextInterceptorSupport.java` (+~52 — the behavioral change: pass interceptors a value the caller can't mutate into the store)
+  - `hazelcast/src/main/java/com/hazelcast/map/impl/operation/BasePutOperation.java`
+- **`test_patch` (oracle):**
+  - `hazelcast/src/test/java/com/hazelcast/map/InterceptorTest.java` (+~112 — primary gate, e.g. `testAfterGetModifyInputValue_noAffectToStoredValue`)
+  - `hazelcast/src/test/java/com/hazelcast/map/EntryProcessorInterceptorTest.java`
+  - `hazelcast/src/test/java/com/hazelcast/map/OffloadableEntryProcessorInterceptorTest.java`
+- **Behavioral spec for the task prompt (no location hints):** "A `MapInterceptor` must not be able to corrupt stored map data by mutating the value passed to it. Mutations an interceptor makes to its input value must not affect the value stored in the map. Make the failing tests pass."
+- **Oracle command:** `mvn -pl hazelcast -am -Dtest=InterceptorTest,EntryProcessorInterceptorTest,OffloadableEntryProcessorInterceptorTest test` (the `@QuickTest` classes boot in-JVM members; deterministic; oracle time is not counted as implementation time).
+- **RED-at-base check:** without the production change, `testAfterGetModifyInputValue_noAffectToStoredValue` fails (the mutated input leaks into the store). Verified the change is cleanly separable into test-only vs production files.
+
 ### Semantic-arm index alignment
 
-Re-index hazelcast at the exact `base` SHA (`C`) so the semantic index matches the code state the agent edits. (~5 min, one-time per task. Assert the indexed SHA == `base` before running.) The baseline arm reads the working tree directly. The index-build cost is reported **separately as amortized infrastructure** — the product premise is that the org already maintains the index — and is not charged per run.
+Re-index hazelcast at the exact `base` SHA (`b4d75e77eaa1`) so the semantic index matches the code state the agent edits. (~5 min, one-time per task. Assert the indexed SHA == `base` before running.) The baseline arm reads the working tree directly. The index-build cost is reported **separately as amortized infrastructure** — the product premise is that the org already maintains the index — and is not charged per run.
 
 ### Correctness oracle
 
