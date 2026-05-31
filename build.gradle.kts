@@ -74,7 +74,12 @@ application {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    // The unit `test` task (run by `build`) must exclude DB/container-backed tests so it
+    // stays fast and Docker-free. Those carry @Tag("integration") / @Tag("e2e") and run via
+    // the dedicated integrationTest / e2eTest tasks below.
+    useJUnitPlatform {
+        excludeTags("integration", "e2e")
+    }
 }
 
 tasks.register<Test>("integrationTest") {
