@@ -30,7 +30,7 @@ public class BranchCleanupTask implements Runnable {
     @Override
     public void run() {
         try {
-            List<BranchIndex> expired = branchIndexDao.findExpired(ttlDays);
+            List<BranchIndex> expired = branchIndexDao.findExpired(ttlDays, ttlDays); // TODO B4: pass immutable TTL
             if (expired.isEmpty()) {
                 log.debug("Branch cleanup: no expired branches found (TTL={}d)", ttlDays);
                 return;
