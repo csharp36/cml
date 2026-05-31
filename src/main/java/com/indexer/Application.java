@@ -158,9 +158,11 @@ public class Application {
             // 5e. Set up audit sink
             var auditSink = new com.indexer.audit.PostgresAuditSink(jdbi);
 
-            // 5f. Set up SCIP upload endpoint
+            // 5f. Set up SCIP upload endpoint (single-shot + multi-part sessions)
             var scipService = new com.indexer.scip.ScipService(repositoryDao, fileDao, jdbi);
-            var scipApi = new com.indexer.scip.ScipApi(authenticator, scipService, auditSink);
+            var scipSessionService = new com.indexer.scip.ScipSessionService(
+                    repositoryDao, fileDao, new com.indexer.scip.ScipSessionDao(jdbi), jdbi);
+            var scipApi = new com.indexer.scip.ScipApi(authenticator, scipService, scipSessionService, auditSink);
 
             // 6. Build Streamable HTTP transport
             final JwtValidator finalJwtValidator = jwtValidator;

@@ -17,16 +17,23 @@ public class ScipApi {
 
     private final ApiKeyAuthenticator authenticator;
     private final ScipService scipService;
+    private final ScipSessionService sessionService;
     private final AuditSink auditSink;
 
-    public ScipApi(ApiKeyAuthenticator authenticator, ScipService scipService, AuditSink auditSink) {
+    public ScipApi(ApiKeyAuthenticator authenticator, ScipService scipService,
+                   ScipSessionService sessionService, AuditSink auditSink) {
         this.authenticator = authenticator;
         this.scipService = scipService;
+        this.sessionService = sessionService;
         this.auditSink = auditSink;
     }
 
     public void registerRoutes(RoutesConfig routes) {
         routes.post("/api/scip/{repoName}", this::handleUpload);
+        routes.post("/api/scip/{repoName}/uploads", this::handleInit);
+        routes.post("/api/scip/{repoName}/uploads/{uploadId}/parts/{partNumber}", this::handlePart);
+        routes.post("/api/scip/{repoName}/uploads/{uploadId}/complete", this::handleComplete);
+        routes.delete("/api/scip/{repoName}/uploads/{uploadId}", this::handleAbort);
     }
 
     private void handleUpload(Context ctx) {
@@ -85,6 +92,109 @@ public class ScipApi {
             auditBestEffort(caller, repoName, true, "error", e.getMessage());
             ctx.status(500).json(Map.of("error", "Internal error processing SCIP upload"));
         }
+    }
+
+    private void handleInit(Context ctx) {
+        String repoName = ctx.pathParam("repoName");
+        CallerIdentity caller = authorizeUpload(ctx, repoName);
+        if (caller == null) return;
+        String gitSha = ctx.header("X-Git-SHA");
+        if (gitSha == null || gitSha.isBlank()) {
+            ctx.status(400).json(Map.of("error", "X-Git-SHA header is required"));
+            return;
+        }
+        var optRepo = scipService.findRepo(repoName);
+        if (optRepo.isEmpty()) {
+            ctx.status(404).json(Map.of("error", "Repository '" + repoName + "' not found"));
+            return;
+        }
+        Integer expectedParts = parseIntHeader(ctx.header("X-Scip-Parts"));
+        var session = sessionService.init(optRepo.get(), gitSha, expectedParts);
+        auditBestEffort(caller, repoName, true, "success", "session init " + session.id());
+        ctx.status(201).json(Map.of("uploadId", session.id(), "stagingKey", session.stagingSha()));
+    }
+
+    private void handlePart(Context ctx) {
+        String repoName = ctx.pathParam("repoName");
+        CallerIdentity caller = authorizeUpload(ctx, repoName);
+        if (caller == null) return;
+        String uploadId = ctx.pathParam("uploadId");
+        int partNumber;
+        try {
+            partNumber = Integer.parseInt(ctx.pathParam("partNumber"));
+        } catch (NumberFormatException e) {
+            ctx.status(400).json(Map.of("error", "Invalid part number"));
+            return;
+        }
+        try {
+            var result = sessionService.part(uploadId, partNumber, ctx.bodyAsBytes());
+            ctx.json(Map.of("part", partNumber, "symbols", result.symbols(), "relationships", result.relationships()));
+        } catch (ScipUploadException e) {
+            ctx.status(statusFor(e)).json(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("SCIP part upload failed for {} session {}: {}", repoName, uploadId, e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Internal error processing SCIP part"));
+        }
+    }
+
+    private void handleComplete(Context ctx) {
+        String repoName = ctx.pathParam("repoName");
+        CallerIdentity caller = authorizeUpload(ctx, repoName);
+        if (caller == null) return;
+        String uploadId = ctx.pathParam("uploadId");
+        var optRepo = scipService.findRepo(repoName);
+        if (optRepo.isEmpty()) {
+            ctx.status(404).json(Map.of("error", "Repository '" + repoName + "' not found"));
+            return;
+        }
+        try {
+            var result = sessionService.complete(optRepo.get(), uploadId);
+            auditBestEffort(caller, repoName, true, "success", "session complete " + uploadId);
+            ctx.json(Map.of("repo", result.repo(), "sha", result.sha(),
+                    "symbols", result.symbols(), "relationships", result.relationships()));
+        } catch (ScipUploadException e) {
+            auditBestEffort(caller, repoName, true, "error", e.getMessage());
+            ctx.status(statusFor(e)).json(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            log.error("SCIP complete failed for {} session {}: {}", repoName, uploadId, e.getMessage(), e);
+            ctx.status(500).json(Map.of("error", "Internal error completing SCIP upload"));
+        }
+    }
+
+    private void handleAbort(Context ctx) {
+        String repoName = ctx.pathParam("repoName");
+        CallerIdentity caller = authorizeUpload(ctx, repoName);
+        if (caller == null) return;
+        sessionService.abort(ctx.pathParam("uploadId"));
+        ctx.status(204);
+    }
+
+    /** Authenticate + scipUpload permission, shared by all session handlers. Returns null if a response was sent. */
+    private CallerIdentity authorizeUpload(Context ctx, String repoName) {
+        CallerIdentity caller = authenticate(ctx);
+        if (caller == null) return null;
+        if (!caller.scipUpload()) {
+            auditBestEffort(caller, repoName, false, "denied", "Missing scipUpload permission");
+            ctx.status(403).json(Map.of("error", "API key does not have scipUpload permission"));
+            return null;
+        }
+        return caller;
+    }
+
+    private static int statusFor(ScipUploadException e) {
+        return switch (e.getMessage()) {
+            case String msg when msg.startsWith("Upload exceeds") -> 413;
+            case String msg when msg.startsWith("Invalid SCIP") -> 400;
+            case String msg when msg.startsWith("No SCIP document") -> 422;
+            case String msg when msg.startsWith("Invalid SCIP upload session") -> 404;
+            case String msg when msg.startsWith("Invalid SCIP session state") -> 409;
+            default -> 400;
+        };
+    }
+
+    private static Integer parseIntHeader(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return Integer.parseInt(value.trim()); } catch (NumberFormatException e) { return null; }
     }
 
     private CallerIdentity authenticate(Context ctx) {
