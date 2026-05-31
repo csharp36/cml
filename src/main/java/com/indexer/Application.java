@@ -245,10 +245,10 @@ public class Application {
                         indexingPipeline.incrementalIndex(repo.id(), branch, repoDir,
                                 event.previousSha(), event.currentSha());
                     } else {
-                        // Feature branch: fetch, then delta-index from main
+                        // Feature branch / tag / sha: fetch, then delta-index from main using the kind the event recorded.
                         gitOps.fetch(Path.of(repo.clonePath()), null);
-                        // TODO Phase 1 (tag pushes): derive RefKind from the event payload instead of hardcoding BRANCH
-                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()), event.currentSha(), RefKind.BRANCH);
+                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()),
+                                event.currentSha(), RefKind.fromDb(event.refKind()));
                     }
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);

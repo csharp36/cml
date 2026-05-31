@@ -15,7 +15,7 @@ public class EventQueuePoller implements Runnable {
     private static final Logger log = LoggerFactory.getLogger(EventQueuePoller.class);
     private static final String CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 
-    public record ProcessableEvent(long eventId, String repoName, String repoPath, String previousSha, String currentSha, String branch) {}
+    public record ProcessableEvent(long eventId, String repoName, String repoPath, String previousSha, String currentSha, String branch, String refKind) {}
 
     private final EventDao eventDao;
     private final Consumer<ProcessableEvent> eventProcessor;
@@ -70,7 +70,8 @@ public class EventQueuePoller implements Runnable {
                             primary.repoPath(),
                             primary.previousSha(),
                             primary.currentSha(),
-                            primary.branch()
+                            primary.branch(),
+                            primary.refKind()
                     );
                     subsumedIds = List.of();
                 } else {
@@ -87,7 +88,8 @@ public class EventQueuePoller implements Runnable {
                             primary.repoPath(),
                             collapsed.previousSha(),
                             collapsed.currentSha(),
-                            primary.branch()
+                            primary.branch(),
+                            primary.refKind()
                     );
                     subsumedIds = collapsed.subsummedEventIds();
 
