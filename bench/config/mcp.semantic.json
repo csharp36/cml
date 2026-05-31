@@ -1,0 +1,3 @@
+{ "mcpServers": { "source-code-indexer": {
+    "type": "http", "url": "http://localhost:8080/mcp",
+    "headers": { "Authorization": "Bearer bench-upload-key" } } } }
