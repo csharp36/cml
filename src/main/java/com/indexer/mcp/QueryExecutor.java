@@ -36,6 +36,8 @@ public class QueryExecutor {
     private final GitOperations gitOps;
     private final PermissionCache permissionCache;
     private final AuditSink auditSink;
+    private final java.util.concurrent.ConcurrentHashMap<String, String> baseBranchCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     // Backward-compatible constructor (used in tests)
     public QueryExecutor(Jdbi jdbi) {
@@ -1651,19 +1653,51 @@ public class QueryExecutor {
     }
 
     /**
-     * Build a CTE that returns the effective files for a repo+branch combination.
-     * Branch-specific files take priority over main files for the same path.
-     * When branch is null or "main", this returns only main files.
+     * The fully-indexed base branch for a repo: its configured {@code branch}, with a one-time
+     * {@code origin/HEAD} detection fallback, defaulting to "main" if neither is available
+     * (e.g. unit tests constructed with null DAOs). Cached — resolution is effectively static per repo.
      */
-    private String effectiveFilesCte(String branch) {
-        String effectiveBranch = (branch == null || branch.isBlank()) ? "main" : branch;
-        if ("main".equals(effectiveBranch)) {
+    private String baseBranch(String repo) {
+        return baseBranchCache.computeIfAbsent(repo, r -> {
+            if (repositoryDao != null) {
+                var rec = repositoryDao.findByName(r);
+                if (rec.isPresent()) {
+                    String configured = rec.get().branch();
+                    if (configured != null && !configured.isBlank()) {
+                        return configured;
+                    }
+                    if (gitOps != null) {
+                        var detected = gitOps.detectDefaultBranch(java.nio.file.Path.of(rec.get().clonePath()));
+                        if (detected.isPresent()) {
+                            return detected.get();
+                        }
+                    }
+                }
+            }
+            return "main";
+        });
+    }
+
+    /** Single-quote-escape a server-controlled identifier for safe inlining as a SQL string literal. */
+    private static String sqlLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    /**
+     * Build a CTE that returns the effective files for a repo+branch combination.
+     * Branch-specific files take priority over the base branch's files for the same path.
+     * When branch is null or blank (or equals the base), this returns only base-branch files.
+     */
+    private String effectiveFilesCte(String branch, String baseBranch) {
+        String base = sqlLiteral(baseBranch);
+        String effectiveBranch = (branch == null || branch.isBlank()) ? baseBranch : branch;
+        if (effectiveBranch.equals(baseBranch)) {
             return """
                     WITH effective_files AS (
                         SELECT f.id, f.repo_id, f.path, f.language, f.size_bytes,
                                f.last_commit_sha, f.last_modified_at, f.branch
                         FROM files f
-                        WHERE f.branch = 'main'
+                        WHERE f.branch = """ + base + """
                     )
                     """;
         }
@@ -1673,7 +1707,7 @@ public class QueryExecutor {
                            f.id, f.repo_id, f.path, f.language, f.size_bytes,
                            f.last_commit_sha, f.last_modified_at, f.branch
                     FROM files f
-                    WHERE f.branch IN (:branch, 'main')
+                    WHERE f.branch IN (:branch, """ + base + """)
                     ORDER BY f.repo_id, f.path,
                              CASE WHEN f.branch = :branch THEN 0 ELSE 1 END
                 )
@@ -1681,19 +1715,19 @@ public class QueryExecutor {
     }
 
     /**
-     * Resolve branch to a non-null value. Null or blank defaults to "main".
+     * Resolve branch to a non-null value. Null or blank defaults to the repo's base branch.
      */
-    private String resolveBranch(String branch) {
-        return (branch == null || branch.isBlank()) ? "main" : branch;
+    private String resolveBranch(String branch, String baseBranch) {
+        return (branch == null || branch.isBlank()) ? baseBranch : branch;
     }
 
     /**
      * Resolve a ref (branch/tag/sha) to the indexed commit SHA whose SCIP we should read.
-     * main -> repositories.last_indexed_sha; any other ref -> branch_index.indexed_sha.
+     * base branch -> repositories.last_indexed_sha; any other ref -> branch_index.indexed_sha.
      */
-    private String resolveRefSha(org.jdbi.v3.core.Handle handle, int repoId, String branch) {
-        String effective = resolveBranch(branch);
-        if ("main".equals(effective)) {
+    private String resolveRefSha(org.jdbi.v3.core.Handle handle, int repoId, String branch, String baseBranch) {
+        String effective = resolveBranch(branch, baseBranch);
+        if (effective.equals(baseBranch)) {
             return handle.createQuery("SELECT last_indexed_sha FROM repositories WHERE id = :id")
                     .bind("id", repoId).mapTo(String.class).findOne().orElse(null);
         }
@@ -1704,27 +1738,25 @@ public class QueryExecutor {
     /**
      * Ensure an index exists for the given ref (branch, tag, or commit SHA). If no
      * branch_index record exists, attempts a synchronous fault-in. Falls back to
-     * main-only results if the ref is unresolvable or fault-in fails.
-     * This is a no-op for the main branch or when fault-in dependencies are not configured.
+     * base-branch-only results if the ref is unresolvable or fault-in fails.
+     * This is a no-op for the base branch or when fault-in dependencies are not configured.
      */
     private void ensureBranchIndexed(String repo, String effectiveBranch) {
-        if ("main".equals(effectiveBranch)) return;
         if (branchIndexDao == null || indexingPipeline == null || repositoryDao == null || gitOps == null) return;
 
-        // Check if we already have an index for this branch
         var repoRecord = repositoryDao.findByName(repo);
         if (repoRecord.isEmpty()) return;
-
         var repoObj = repoRecord.get();
-        var existing = branchIndexDao.find(repoObj.id(), effectiveBranch);
 
+        String base = baseBranch(repo);
+        if (effectiveBranch.equals(base)) return;   // base layer needs no fault-in
+
+        var existing = branchIndexDao.find(repoObj.id(), effectiveBranch);
         if (existing.isPresent()) {
-            // Branch is indexed -- touch last_accessed_at to reset TTL
             branchIndexDao.touchLastAccessed(repoObj.id(), effectiveBranch);
             return;
         }
 
-        // No index exists -- attempt fault-in
         log.info("Ref '{}' not indexed for repo '{}', triggering synchronous fault-in", effectiveBranch, repo);
         try {
             Path repoDir = Path.of(repoObj.clonePath());
@@ -1732,15 +1764,14 @@ public class QueryExecutor {
 
             var resolved = gitOps.resolveAnyRef(repoDir, effectiveBranch);
             if (resolved.isEmpty()) {
-                log.debug("Ref '{}' not resolvable for repo '{}', falling back to main", effectiveBranch, repo);
+                log.debug("Ref '{}' not resolvable for repo '{}', falling back to base", effectiveBranch, repo);
                 return;
             }
             var ref = resolved.get();
-            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, ref.sha(), ref.kind());
+            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, ref.sha(), ref.kind(), base);
             log.info("Fault-in complete for ref '{}' ({}) repo '{}'", effectiveBranch, ref.kind(), repo);
         } catch (Exception e) {
             log.warn("Fault-in failed for ref '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
-            // Fall through -- query will return main-only results
         }
     }
 
