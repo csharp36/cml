@@ -222,6 +222,37 @@ class ConfigLoaderTest {
         assertThat(keys.get(2).repos()).isEmpty(); // absent → empty (fail-closed)
     }
 
+    @Test
+    void parsesTagsBlock() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                tags:
+                  autoIndex: false
+                  pattern: "release-*"
+                """;
+        ConfigLoader loader = new ConfigLoader(envName -> null);
+        IndexerConfig cfg = loader.load(toStream(yaml));
+
+        assertThat(cfg.tags().autoIndex()).isFalse();
+        assertThat(cfg.tags().pattern()).isEqualTo("release-*");
+    }
+
+    @Test
+    void tagsDefaultsWhenBlockAbsent() throws IOException {
+        // ENV_VAR_YAML has no tags: block — defaults must kick in
+        ConfigLoader loader = new ConfigLoader(varName -> null);
+        IndexerConfig cfg = loader.load(toStream(ENV_VAR_YAML));
+
+        assertThat(cfg.tags().autoIndex()).isTrue();
+        assertThat(cfg.tags().pattern()).isEqualTo("v*");
+    }
+
     private InputStream toStream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }

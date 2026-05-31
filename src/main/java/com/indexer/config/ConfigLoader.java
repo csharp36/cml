@@ -87,10 +87,11 @@ public class ConfigLoader {
         IndexerConfig.LanguagesConfig languages = parseLanguages(root.get("languages"));
         IndexerConfig.AdminConfig admin = parseAdmin(root.get("admin"));
         IndexerConfig.BranchConfig branches = parseBranches(root.get("branches"));
+        IndexerConfig.TagConfig tags = parseTags(root.get("tags"));
         IndexerConfig.ScipConfig scip = parseScip(root.get("scip"));
         IndexerConfig.McpAuthConfig mcpAuth = parseMcpAuth(root.get("auth"));
 
-        return new IndexerConfig(server, database, repositories, languages, admin, branches, scip, mcpAuth);
+        return new IndexerConfig(server, database, repositories, languages, admin, branches, tags, scip, mcpAuth);
     }
 
     private IndexerConfig.ServerConfig parseServer(JsonNode node) {
@@ -173,6 +174,13 @@ public class ConfigLoader {
         int ttlDays = node.has("ttlDays") ? node.get("ttlDays").asInt(14) : 14;
         int cleanupIntervalHours = node.has("cleanupIntervalHours") ? node.get("cleanupIntervalHours").asInt(24) : 24;
         return new IndexerConfig.BranchConfig(autoIndex, ttlDays, cleanupIntervalHours);
+    }
+
+    private IndexerConfig.TagConfig parseTags(JsonNode node) {
+        if (node == null) return null;
+        boolean autoIndex = !node.has("autoIndex") || node.get("autoIndex").asBoolean(true);
+        String pattern = textOrNull(node, "pattern");
+        return new IndexerConfig.TagConfig(autoIndex, pattern);
     }
 
     private IndexerConfig.ScipConfig parseScip(JsonNode node) {
