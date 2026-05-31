@@ -258,13 +258,15 @@ public class Application {
 
             // 8b. Schedule branch cleanup task
             scheduler = Executors.newSingleThreadScheduledExecutor();
-            var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao, config.branches().ttlDays());
+            var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao,
+                    config.branches().ttlDays(), config.branches().immutableRefTtlDays());
             scheduler.scheduleAtFixedRate(cleanupTask,
                     config.branches().cleanupIntervalHours(),
                     config.branches().cleanupIntervalHours(),
                     TimeUnit.HOURS);
-            log.info("Branch cleanup task scheduled every {}h (TTL={}d)",
-                    config.branches().cleanupIntervalHours(), config.branches().ttlDays());
+            log.info("Branch cleanup task scheduled every {}h (branchTTL={}d, immutableTTL={}d)",
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().ttlDays(), config.branches().immutableRefTtlDays());
 
             // 8c. Schedule SCIP prune task
             // SCIP prune reuses branches.cleanupIntervalHours; add a dedicated scip.pruneIntervalHours if an independent cadence is ever needed.
