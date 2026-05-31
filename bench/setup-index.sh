@@ -15,7 +15,7 @@ echo "waiting for full reindex at $BASE ..."
 for i in $(seq 1 60); do
   sha=$(docker exec indexer-pg psql -U indexer -d source_code_index -tAc \
     "select last_indexed_sha from repositories where name='hazelcast'")
-  case "$BASE" in "$sha"*) echo "OK: indexed at base ($sha)"; exit 0;; esac
+  case "$sha" in "$BASE"*) echo "OK: indexed at base ($sha)"; exit 0;; esac
   sleep 15
 done
 echo "TIMEOUT: last_indexed_sha=$sha != $BASE"; exit 1
