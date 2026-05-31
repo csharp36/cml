@@ -36,6 +36,11 @@ public class QueryExecutor {
     private final GitOperations gitOps;
     private final PermissionCache permissionCache;
     private final AuditSink auditSink;
+    // Caches only the expensive origin/HEAD git detection (used when a repo's configured
+    // branch is blank). The configured branch itself is read fresh from the DB each call,
+    // so an admin delete+re-add with a different branch can never serve a stale base branch.
+    private final java.util.concurrent.ConcurrentHashMap<String, String> originHeadCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     // Backward-compatible constructor (used in tests)
     public QueryExecutor(Jdbi jdbi) {
@@ -198,12 +203,13 @@ public class QueryExecutor {
      * Search symbols by name (regex), kind, language, and repo.
      */
     public Object searchSymbols(String query, String kind, String language, String repo, String branch, int limit) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT s.name, s.kind, s.signature, s.start_line, s.end_line, s.visibility,
                            ef.path AS file_path, r.name AS repo_name
@@ -215,7 +221,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -259,10 +265,11 @@ public class QueryExecutor {
      * Get detailed information about a specific symbol, including source code, children, and type relationships.
      */
     public Map<String, Object> getSymbolDetail(String repo, String filePath, String symbolName, Integer line, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         ensureBranchIndexed(repo, effectiveBranch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT s.id, s.name, s.kind, s.signature, s.start_line, s.end_line,
                            s.parent_id, s.visibility, s.is_static,
@@ -276,7 +283,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -306,7 +313,7 @@ public class QueryExecutor {
             long fileId = ((Number) symbol.get("file_id")).longValue();
 
             // Read source from the overlay-resolved file_contents row (ref-aware),
-            // not the on-disk working tree (which is always checked out to main).
+            // not the on-disk working tree (checked out to the repo's base branch).
             String content = handle.createQuery(
                             "SELECT content FROM file_contents WHERE file_id = :fileId")
                     .bind("fileId", fileId)
@@ -351,12 +358,13 @@ public class QueryExecutor {
      * Find implementations of a type by looking up 'implements' relationships.
      */
     public Object findImplementations(String typeName, String repo, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT s.name AS class_name, s.signature, ef.path AS file_path, r.name AS repo_name
                     FROM type_relationships tr
@@ -368,7 +376,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -398,12 +406,13 @@ public class QueryExecutor {
      * Find files that import a given symbol name.
      */
     public Object findReferences(String symbolName, String repo, String branch, int limit) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT ef.path AS file_path, r.name AS repo_name, i.import_path
                     FROM imports i
@@ -414,7 +423,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -447,12 +456,13 @@ public class QueryExecutor {
      * Full-text search across file contents using PostgreSQL tsvector/tsquery.
      */
     public List<Map<String, Object>> searchCode(String query, String language, String repo, String branch, int limit) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT ef.path AS file_path, r.name AS repo_name,
                            ts_headline('english', fc.content, plainto_tsquery('english', :query),
@@ -465,7 +475,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -493,7 +503,8 @@ public class QueryExecutor {
      * Search files by glob-style pattern (e.g., "*.java", "src/**").
      */
     public List<Map<String, Object>> searchFiles(String pattern, String language, String repo, String branch, int limit) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repo);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
@@ -501,7 +512,7 @@ public class QueryExecutor {
             // Convert glob * to SQL %
             String sqlPattern = pattern != null ? pattern.replace("*", "%") : "%";
 
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT ef.path, r.name AS repo_name, ef.language, ef.size_bytes, ef.last_modified_at
                     FROM effective_files ef
@@ -511,7 +522,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -539,7 +550,9 @@ public class QueryExecutor {
      * Get a high-level summary of a repository.
      */
     public Map<String, Object> getRepoSummary(String repoName, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repoName);
+        String safeBase = sqlLiteral(baseBranch);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
             // Get repo record
@@ -558,46 +571,43 @@ public class QueryExecutor {
             var result = new LinkedHashMap<>(optRepo.get());
             int repoId = ((Number) result.get("id")).intValue();
 
-            if ("main".equals(effectiveBranch)) {
-                // Count files — main branch only
+            if (effectiveBranch.equals(baseBranch)) {
+                // Count files — base branch only
                 long fileCount = handle.createQuery(
-                        "SELECT COUNT(*) FROM files WHERE repo_id = :repoId AND branch = 'main'")
+                        "SELECT COUNT(*) FROM files WHERE repo_id = :repoId AND branch = " + safeBase)
                         .bind("repoId", repoId)
                         .mapTo(Long.class)
                         .one();
                 result.put("fileCount", fileCount);
 
-                // Language breakdown — main branch only
-                var languageBreakdown = handle.createQuery("""
-                        SELECT language, COUNT(*) AS count
-                        FROM files WHERE repo_id = :repoId AND branch = 'main' AND language IS NOT NULL
-                        GROUP BY language ORDER BY count DESC
-                        """)
+                // Language breakdown — base branch only
+                var languageBreakdown = handle.createQuery(
+                        "SELECT language, COUNT(*) AS count" +
+                        " FROM files WHERE repo_id = :repoId AND branch = " + safeBase + " AND language IS NOT NULL" +
+                        " GROUP BY language ORDER BY count DESC")
                         .bind("repoId", repoId)
                         .mapToMap()
                         .list();
                 result.put("languageBreakdown", languageBreakdown);
 
-                // Top-level directories — main branch only
-                var topLevelDirs = handle.createQuery("""
-                        SELECT DISTINCT split_part(path, '/', 1) AS dir
-                        FROM files WHERE repo_id = :repoId AND branch = 'main' AND path LIKE '%/%'
-                        ORDER BY dir
-                        """)
+                // Top-level directories — base branch only
+                var topLevelDirs = handle.createQuery(
+                        "SELECT DISTINCT split_part(path, '/', 1) AS dir" +
+                        " FROM files WHERE repo_id = :repoId AND branch = " + safeBase + " AND path LIKE '%/%'" +
+                        " ORDER BY dir")
                         .bind("repoId", repoId)
                         .mapTo(String.class)
                         .list();
                 result.put("topLevelDirectories", topLevelDirs);
             } else {
                 // Count effective files for branch (DISTINCT ON overlay)
-                long fileCount = handle.createQuery("""
-                        SELECT COUNT(*) FROM (
-                            SELECT DISTINCT ON (path) path
-                            FROM files
-                            WHERE repo_id = :repoId AND branch IN (:branch, 'main')
-                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
-                        ) effective
-                        """)
+                long fileCount = handle.createQuery(
+                        "SELECT COUNT(*) FROM (" +
+                        " SELECT DISTINCT ON (path) path" +
+                        " FROM files" +
+                        " WHERE repo_id = :repoId AND branch IN (:branch, " + safeBase + ")" +
+                        " ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END" +
+                        ") effective")
                         .bind("repoId", repoId)
                         .bind("branch", effectiveBranch)
                         .mapTo(Long.class)
@@ -605,15 +615,13 @@ public class QueryExecutor {
                 result.put("fileCount", fileCount);
 
                 // Language breakdown for effective files
-                var languageBreakdown = handle.createQuery("""
-                        SELECT language, COUNT(*) AS count FROM (
-                            SELECT DISTINCT ON (path) path, language
-                            FROM files
-                            WHERE repo_id = :repoId AND branch IN (:branch, 'main') AND language IS NOT NULL
-                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
-                        ) effective
-                        GROUP BY language ORDER BY count DESC
-                        """)
+                var languageBreakdown = handle.createQuery(
+                        "SELECT language, COUNT(*) AS count FROM (" +
+                        " SELECT DISTINCT ON (path) path, language" +
+                        " FROM files" +
+                        " WHERE repo_id = :repoId AND branch IN (:branch, " + safeBase + ") AND language IS NOT NULL" +
+                        " ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END" +
+                        ") effective GROUP BY language ORDER BY count DESC")
                         .bind("repoId", repoId)
                         .bind("branch", effectiveBranch)
                         .mapToMap()
@@ -621,15 +629,13 @@ public class QueryExecutor {
                 result.put("languageBreakdown", languageBreakdown);
 
                 // Top-level directories for effective files
-                var topLevelDirs = handle.createQuery("""
-                        SELECT DISTINCT split_part(path, '/', 1) AS dir FROM (
-                            SELECT DISTINCT ON (path) path
-                            FROM files
-                            WHERE repo_id = :repoId AND branch IN (:branch, 'main') AND path LIKE '%/%'
-                            ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END
-                        ) effective
-                        ORDER BY dir
-                        """)
+                var topLevelDirs = handle.createQuery(
+                        "SELECT DISTINCT split_part(path, '/', 1) AS dir FROM (" +
+                        " SELECT DISTINCT ON (path) path" +
+                        " FROM files" +
+                        " WHERE repo_id = :repoId AND branch IN (:branch, " + safeBase + ") AND path LIKE '%/%'" +
+                        " ORDER BY path, CASE WHEN branch = :branch THEN 0 ELSE 1 END" +
+                        ") effective ORDER BY dir")
                         .bind("repoId", repoId)
                         .bind("branch", effectiveBranch)
                         .mapTo(String.class)
@@ -649,10 +655,11 @@ public class QueryExecutor {
      * Get a summary of a specific file including its symbols and imports.
      */
     public Map<String, Object> getFileSummary(String repoName, String filePath, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repoName);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT ef.id, ef.path, ef.language, ef.size_bytes, ef.last_commit_sha, ef.last_modified_at,
                            r.name AS repo_name
@@ -663,7 +670,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -711,13 +718,14 @@ public class QueryExecutor {
      * Get a flat directory tree for a repository path prefix.
      */
     public List<Map<String, Object>> getDirectoryTree(String repoName, String path, int depth, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repoName);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
         ensureBranchIndexed(repoName, effectiveBranch);
         return jdbi.withHandle(handle -> {
             String prefix = (path != null && !path.isBlank()) ? path : "";
             String pattern = prefix.isEmpty() ? "%" : (prefix.endsWith("/") ? prefix + "%" : prefix + "/%");
 
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch));
+            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
             sb.append("""
                     SELECT ef.path, ef.language
                     FROM effective_files ef
@@ -728,7 +736,7 @@ public class QueryExecutor {
 
             var params = new LinkedHashMap<String, Object>();
 
-            if (!"main".equals(effectiveBranch)) {
+            if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
 
@@ -946,7 +954,7 @@ public class QueryExecutor {
 
     /**
      * Get the type hierarchy for a symbol — supertypes, subtypes, or both.
-     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → main)
+     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → base branch)
      */
     public Map<String, Object> getTypeHierarchy(String repo, String symbolName, String filePath,
             String kind, String direction, int depth, String branch) {
@@ -955,7 +963,8 @@ public class QueryExecutor {
         final String dir = direction;
         final int maxDepth = depth;
 
-        ensureBranchIndexed(repo, resolveBranch(branch));
+        String baseBranch = baseBranch(repo);
+        ensureBranchIndexed(repo, resolveBranch(branch, baseBranch));
 
         return jdbi.withHandle(handle -> {
             int repoId = resolveRepoId(handle, repo);
@@ -963,11 +972,11 @@ public class QueryExecutor {
                 return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
             }
 
-            String uploadSha = resolveRefSha(handle, repoId, branch);
+            String uploadSha = resolveRefSha(handle, repoId, branch, baseBranch);
             if (uploadSha == null) {
                 var result = new LinkedHashMap<String, Object>();
                 result.put("symbol", symbolName);
-                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch) + "'");
+                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch, baseBranch) + "'");
                 String scipStatus = getScipStatus(repo);
                 if (scipStatus != null) result.put("scip_status", scipStatus);
                 return result;
@@ -1012,7 +1021,7 @@ public class QueryExecutor {
     /**
      * Find symbols related to a given symbol through SCIP relationships.
      * Flat list of direct edges (not recursive).
-     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → main)
+     * @param branch ref to resolve SCIP at: branch name, tag, or commit SHA (null → base branch)
      */
     public Map<String, Object> getSymbolReferences(String repo, String symbolName, String filePath,
             String relationshipKind, String direction, int limit, String branch) {
@@ -1021,7 +1030,8 @@ public class QueryExecutor {
         final String dir = direction;
         final int maxResults = limit;
 
-        ensureBranchIndexed(repo, resolveBranch(branch));
+        String baseBranch = baseBranch(repo);
+        ensureBranchIndexed(repo, resolveBranch(branch, baseBranch));
 
         return jdbi.withHandle(handle -> {
             int repoId = resolveRepoId(handle, repo);
@@ -1029,11 +1039,11 @@ public class QueryExecutor {
                 return Map.<String, Object>of("error", "Repository '" + repo + "' not found");
             }
 
-            String uploadSha = resolveRefSha(handle, repoId, branch);
+            String uploadSha = resolveRefSha(handle, repoId, branch, baseBranch);
             if (uploadSha == null) {
                 var result = new LinkedHashMap<String, Object>();
                 result.put("symbol", symbolName);
-                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch) + "'");
+                result.put("message", "No SCIP data indexed for ref '" + resolveBranch(branch, baseBranch) + "'");
                 String scipStatus = getScipStatus(repo);
                 if (scipStatus != null) result.put("scip_status", scipStatus);
                 return result;
@@ -1164,7 +1174,8 @@ public class QueryExecutor {
      * Supports branch-aware comparison.
      */
     public Map<String, Object> checkSync(String repoName, String localSha, String branch) {
-        String effectiveBranch = resolveBranch(branch);
+        String baseBranch = baseBranch(repoName);
+        String effectiveBranch = resolveBranch(branch, baseBranch);
 
         return jdbi.withHandle(handle -> {
             var optRepo = handle.createQuery(
@@ -1184,7 +1195,7 @@ public class QueryExecutor {
             String indexedSha;
             Object indexedAt;
 
-            if ("main".equals(effectiveBranch)) {
+            if (effectiveBranch.equals(baseBranch)) {
                 indexedSha = (String) repo.get("last_indexed_sha");
                 indexedAt = repo.get("last_indexed_at");
             } else {
@@ -1377,6 +1388,7 @@ public class QueryExecutor {
      * Uses DISTINCT ON overlay for each branch to get effective file sets, then FULL OUTER JOIN to find diffs.
      */
     public Map<String, Object> diffBranches(String repo, String branchA, String branchB, String detail, int limit) {
+        String baseBranch = baseBranch(repo);
         String effectiveDetail = (detail != null && "files".equalsIgnoreCase(detail)) ? "files" : "symbols";
         ensureBranchIndexed(repo, branchA);
         ensureBranchIndexed(repo, branchB);
@@ -1392,33 +1404,32 @@ public class QueryExecutor {
             int repoId = optRepo.get();
 
             if ("files".equals(effectiveDetail)) {
-                return diffFiles(handle, repoId, branchA, branchB, limit);
+                return diffFiles(handle, repoId, branchA, branchB, limit, baseBranch);
             } else {
-                return diffSymbols(handle, repoId, branchA, branchB, limit);
+                return diffSymbols(handle, repoId, branchA, branchB, limit, baseBranch);
             }
         });
     }
 
     private Map<String, Object> diffFiles(org.jdbi.v3.core.Handle handle, int repoId,
-                                           String branchA, String branchB, int limit) {
-        var rows = handle.createQuery("""
-                WITH effective_a AS (
-                    SELECT DISTINCT ON (path) path, language, last_commit_sha
-                    FROM files WHERE repo_id = :repoId AND branch IN (:branchA, 'main')
-                    ORDER BY path, CASE WHEN branch = :branchA THEN 0 ELSE 1 END
-                ),
-                effective_b AS (
-                    SELECT DISTINCT ON (path) path, language, last_commit_sha
-                    FROM files WHERE repo_id = :repoId AND branch IN (:branchB, 'main')
-                    ORDER BY path, CASE WHEN branch = :branchB THEN 0 ELSE 1 END
-                )
-                SELECT a.path AS a_path, a.language AS a_lang, a.last_commit_sha AS a_sha,
-                       b.path AS b_path, b.language AS b_lang, b.last_commit_sha AS b_sha
-                FROM effective_a a
-                FULL OUTER JOIN effective_b b ON a.path = b.path
-                WHERE a.path IS NULL OR b.path IS NULL OR a.last_commit_sha != b.last_commit_sha
-                LIMIT :limit
-                """)
+                                           String branchA, String branchB, int limit, String baseBranch) {
+        String safeBase = sqlLiteral(baseBranch);
+        var rows = handle.createQuery(
+                "WITH effective_a AS (" +
+                " SELECT DISTINCT ON (path) path, language, last_commit_sha" +
+                " FROM files WHERE repo_id = :repoId AND branch IN (:branchA, " + safeBase + ")" +
+                " ORDER BY path, CASE WHEN branch = :branchA THEN 0 ELSE 1 END" +
+                "), effective_b AS (" +
+                " SELECT DISTINCT ON (path) path, language, last_commit_sha" +
+                " FROM files WHERE repo_id = :repoId AND branch IN (:branchB, " + safeBase + ")" +
+                " ORDER BY path, CASE WHEN branch = :branchB THEN 0 ELSE 1 END" +
+                ")" +
+                " SELECT a.path AS a_path, a.language AS a_lang, a.last_commit_sha AS a_sha," +
+                " b.path AS b_path, b.language AS b_lang, b.last_commit_sha AS b_sha" +
+                " FROM effective_a a" +
+                " FULL OUTER JOIN effective_b b ON a.path = b.path" +
+                " WHERE a.path IS NULL OR b.path IS NULL OR a.last_commit_sha != b.last_commit_sha" +
+                " LIMIT :limit")
                 .bind("repoId", repoId)
                 .bind("branchA", branchA)
                 .bind("branchB", branchB)
@@ -1445,14 +1456,14 @@ public class QueryExecutor {
     }
 
     private Map<String, Object> diffSymbols(org.jdbi.v3.core.Handle handle, int repoId,
-                                             String branchA, String branchB, int limit) {
-        // Fetch the effective symbol set for each branch (branch files overlay main).
+                                             String branchA, String branchB, int limit, String baseBranch) {
+        // Fetch the effective symbol set for each branch (branch files overlay the base branch).
         // We diff in Java keyed by a full fingerprint (file+name+kind+signature) so that
         // overloaded / same-named symbols don't cartesian-explode the way a name-only
         // SQL self-join does. A symbol whose signature is unchanged contributes the same
         // fingerprint to both branches and simply cancels out.
-        var aRows = fetchEffectiveSymbols(handle, repoId, branchA);
-        var bRows = fetchEffectiveSymbols(handle, repoId, branchB);
+        var aRows = fetchEffectiveSymbols(handle, repoId, branchA, baseBranch);
+        var bRows = fetchEffectiveSymbols(handle, repoId, branchB, baseBranch);
 
         var aByFp = new LinkedHashMap<String, Map<String, Object>>();
         for (var r : aRows) aByFp.putIfAbsent(symbolFingerprint(r), r);
@@ -1512,16 +1523,16 @@ public class QueryExecutor {
     }
 
     private java.util.List<Map<String, Object>> fetchEffectiveSymbols(org.jdbi.v3.core.Handle handle,
-                                                                       int repoId, String branch) {
-        return handle.createQuery("""
-                WITH effective AS (
-                    SELECT DISTINCT ON (f.path) f.id AS file_id, f.path
-                    FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branch, 'main')
-                    ORDER BY f.path, CASE WHEN f.branch = :branch THEN 0 ELSE 1 END
-                )
-                SELECT e.path AS file_path, s.name, s.kind, s.signature, s.start_line, s.end_line
-                FROM symbols s JOIN effective e ON s.file_id = e.file_id
-                """)
+                                                                       int repoId, String branch, String baseBranch) {
+        String safeBase = sqlLiteral(baseBranch);
+        return handle.createQuery(
+                "WITH effective AS (" +
+                " SELECT DISTINCT ON (f.path) f.id AS file_id, f.path" +
+                " FROM files f WHERE f.repo_id = :repoId AND f.branch IN (:branch, " + safeBase + ")" +
+                " ORDER BY f.path, CASE WHEN f.branch = :branch THEN 0 ELSE 1 END" +
+                ")" +
+                " SELECT e.path AS file_path, s.name, s.kind, s.signature, s.start_line, s.end_line" +
+                " FROM symbols s JOIN effective e ON s.file_id = e.file_id")
                 .bind("repoId", repoId)
                 .bind("branch", branch)
                 .mapToMap()
@@ -1551,6 +1562,7 @@ public class QueryExecutor {
      */
     public Map<String, Object> searchBranches(String repo, String query, String kind,
                                                String branchPattern, int maxBranches, int limit) {
+        String baseBranch = baseBranch(repo);
         String effectivePattern = (branchPattern != null && !branchPattern.isBlank()) ? branchPattern : ".*";
         int effectiveMaxBranches = Math.min(Math.max(maxBranches, 1), 200);
         int effectiveLimit = Math.min(Math.max(limit, 1), 100);
@@ -1577,10 +1589,10 @@ public class QueryExecutor {
                     .mapTo(String.class)
                     .list();
 
-            int branchesSearched = matchingBranches.size() + 1; // +1 for main
+            int branchesSearched = matchingBranches.size() + 1; // +1 for base branch
 
             var allBranches = new java.util.ArrayList<String>();
-            allBranches.add("main");
+            allBranches.add(baseBranch);
             allBranches.addAll(matchingBranches);
 
             // Build IN clause from server-controlled branch names
@@ -1651,49 +1663,74 @@ public class QueryExecutor {
     }
 
     /**
-     * Build a CTE that returns the effective files for a repo+branch combination.
-     * Branch-specific files take priority over main files for the same path.
-     * When branch is null or "main", this returns only main files.
+     * The fully-indexed base branch for a repo: its configured {@code branch}, read fresh from the
+     * DB each call (so it can never go stale relative to what was indexed), falling back to a cached
+     * one-time {@code origin/HEAD} detection when the configured branch is blank, then to "main" if
+     * neither is available (e.g. unit tests constructed with null DAOs).
      */
-    private String effectiveFilesCte(String branch) {
-        String effectiveBranch = (branch == null || branch.isBlank()) ? "main" : branch;
-        if ("main".equals(effectiveBranch)) {
+    private String baseBranch(String repo) {
+        if (repo == null || repo.isBlank() || repositoryDao == null) return "main";
+        var rec = repositoryDao.findByName(repo);
+        if (rec.isEmpty()) return "main";
+
+        String configured = rec.get().branch();
+        if (configured != null && !configured.isBlank()) {
+            return configured;
+        }
+        if (gitOps == null) return "main";
+        // Only the git detection is cached — keyed by repo, recomputed only on a cache miss.
+        return originHeadCache.computeIfAbsent(repo, r ->
+                gitOps.detectDefaultBranch(java.nio.file.Path.of(rec.get().clonePath())).orElse("main"));
+    }
+
+    /** Single-quote-escape a server-controlled identifier for safe inlining as a SQL string literal. */
+    private static String sqlLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    /**
+     * Build a CTE that returns the effective files for a repo+branch combination.
+     * Branch-specific files take priority over the base branch's files for the same path.
+     * When branch is null or blank (or equals the base), this returns only base-branch files.
+     */
+    private String effectiveFilesCte(String branch, String baseBranch) {
+        String base = sqlLiteral(baseBranch);
+        String effectiveBranch = (branch == null || branch.isBlank()) ? baseBranch : branch;
+        if (effectiveBranch.equals(baseBranch)) {
             return """
                     WITH effective_files AS (
                         SELECT f.id, f.repo_id, f.path, f.language, f.size_bytes,
                                f.last_commit_sha, f.last_modified_at, f.branch
                         FROM files f
-                        WHERE f.branch = 'main'
+                        WHERE f.branch = """ + base + """
                     )
                     """;
         }
-        return """
-                WITH effective_files AS (
-                    SELECT DISTINCT ON (f.repo_id, f.path)
-                           f.id, f.repo_id, f.path, f.language, f.size_bytes,
-                           f.last_commit_sha, f.last_modified_at, f.branch
-                    FROM files f
-                    WHERE f.branch IN (:branch, 'main')
-                    ORDER BY f.repo_id, f.path,
-                             CASE WHEN f.branch = :branch THEN 0 ELSE 1 END
-                )
-                """;
+        return "WITH effective_files AS (" +
+                " SELECT DISTINCT ON (f.repo_id, f.path)" +
+                " f.id, f.repo_id, f.path, f.language, f.size_bytes," +
+                " f.last_commit_sha, f.last_modified_at, f.branch" +
+                " FROM files f" +
+                " WHERE f.branch IN (:branch, " + base + ")" +
+                " ORDER BY f.repo_id, f.path," +
+                " CASE WHEN f.branch = :branch THEN 0 ELSE 1 END" +
+                ") ";
     }
 
     /**
-     * Resolve branch to a non-null value. Null or blank defaults to "main".
+     * Resolve branch to a non-null value. Null or blank defaults to the repo's base branch.
      */
-    private String resolveBranch(String branch) {
-        return (branch == null || branch.isBlank()) ? "main" : branch;
+    private String resolveBranch(String branch, String baseBranch) {
+        return (branch == null || branch.isBlank()) ? baseBranch : branch;
     }
 
     /**
      * Resolve a ref (branch/tag/sha) to the indexed commit SHA whose SCIP we should read.
-     * main -> repositories.last_indexed_sha; any other ref -> branch_index.indexed_sha.
+     * base branch -> repositories.last_indexed_sha; any other ref -> branch_index.indexed_sha.
      */
-    private String resolveRefSha(org.jdbi.v3.core.Handle handle, int repoId, String branch) {
-        String effective = resolveBranch(branch);
-        if ("main".equals(effective)) {
+    private String resolveRefSha(org.jdbi.v3.core.Handle handle, int repoId, String branch, String baseBranch) {
+        String effective = resolveBranch(branch, baseBranch);
+        if (effective.equals(baseBranch)) {
             return handle.createQuery("SELECT last_indexed_sha FROM repositories WHERE id = :id")
                     .bind("id", repoId).mapTo(String.class).findOne().orElse(null);
         }
@@ -1704,27 +1741,25 @@ public class QueryExecutor {
     /**
      * Ensure an index exists for the given ref (branch, tag, or commit SHA). If no
      * branch_index record exists, attempts a synchronous fault-in. Falls back to
-     * main-only results if the ref is unresolvable or fault-in fails.
-     * This is a no-op for the main branch or when fault-in dependencies are not configured.
+     * base-branch-only results if the ref is unresolvable or fault-in fails.
+     * This is a no-op for the base branch or when fault-in dependencies are not configured.
      */
     private void ensureBranchIndexed(String repo, String effectiveBranch) {
-        if ("main".equals(effectiveBranch)) return;
         if (branchIndexDao == null || indexingPipeline == null || repositoryDao == null || gitOps == null) return;
 
-        // Check if we already have an index for this branch
         var repoRecord = repositoryDao.findByName(repo);
         if (repoRecord.isEmpty()) return;
-
         var repoObj = repoRecord.get();
-        var existing = branchIndexDao.find(repoObj.id(), effectiveBranch);
 
+        String base = baseBranch(repo);
+        if (effectiveBranch.equals(base)) return;   // base layer needs no fault-in
+
+        var existing = branchIndexDao.find(repoObj.id(), effectiveBranch);
         if (existing.isPresent()) {
-            // Branch is indexed -- touch last_accessed_at to reset TTL
             branchIndexDao.touchLastAccessed(repoObj.id(), effectiveBranch);
             return;
         }
 
-        // No index exists -- attempt fault-in
         log.info("Ref '{}' not indexed for repo '{}', triggering synchronous fault-in", effectiveBranch, repo);
         try {
             Path repoDir = Path.of(repoObj.clonePath());
@@ -1732,15 +1767,14 @@ public class QueryExecutor {
 
             var resolved = gitOps.resolveAnyRef(repoDir, effectiveBranch);
             if (resolved.isEmpty()) {
-                log.debug("Ref '{}' not resolvable for repo '{}', falling back to main", effectiveBranch, repo);
+                log.debug("Ref '{}' not resolvable for repo '{}', falling back to base", effectiveBranch, repo);
                 return;
             }
             var ref = resolved.get();
-            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, ref.sha(), ref.kind());
+            indexingPipeline.branchIndex(repoObj.id(), effectiveBranch, repoDir, ref.sha(), ref.kind(), base);
             log.info("Fault-in complete for ref '{}' ({}) repo '{}'", effectiveBranch, ref.kind(), repo);
         } catch (Exception e) {
             log.warn("Fault-in failed for ref '{}' repo '{}': {}", effectiveBranch, repo, e.getMessage());
-            // Fall through -- query will return main-only results
         }
     }
 

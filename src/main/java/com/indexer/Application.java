@@ -230,9 +230,9 @@ public class Application {
                     throw new RuntimeException("Unknown repo: " + event.repoName());
                 }
                 try {
-                    String branch = event.branch() != null ? event.branch() : "main";
-                    if ("main".equals(branch) || branch.equals(repo.branch())) {
-                        // Main branch: fetch, fast-forward, incremental index
+                    String branch = event.branch() != null ? event.branch() : repo.branch();
+                    if (branch.equals(repo.branch())) {
+                        // Base branch: fetch, fast-forward, incremental index
                         var repoDir = Path.of(repo.clonePath());
                         gitOps.fetch(repoDir, null);
                         try {
@@ -245,10 +245,10 @@ public class Application {
                         indexingPipeline.incrementalIndex(repo.id(), branch, repoDir,
                                 event.previousSha(), event.currentSha());
                     } else {
-                        // Feature branch / tag / sha: fetch, then delta-index from main using the kind the event recorded.
+                        // Feature branch / tag / sha: fetch, then delta-index from the base branch using the recorded kind.
                         gitOps.fetch(Path.of(repo.clonePath()), null);
                         indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()),
-                                event.currentSha(), RefKind.fromDb(event.refKind()));
+                                event.currentSha(), RefKind.fromDb(event.refKind()), repo.branch());
                     }
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);

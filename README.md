@@ -260,9 +260,9 @@ operate at the repo level and don't take a `branch`.
 
 CML uses a copy-on-write model for branch indexing:
 
-- **Main branch** — fully indexed (all files, symbols, imports, contents)
-- **Feature branches** — only files that differ from main are stored
-- **Any git ref** — the `branch` parameter accepts a branch, a **tag**, or a **commit SHA**. CML resolves it (branch → tag → SHA) and faults it in as a copy-on-write overlay vs main on first query — ideal for debugging a release by tag/SHA with no local checkout
+- **Base branch** — each repo's configured `branch` (e.g. `main`, `develop`) is the fully-indexed base (all files, symbols, imports, contents); the overlay keys off this configured branch, not the literal `main`, so non-`main` defaults work (falls back to `origin/HEAD` if the configured branch is blank)
+- **Feature branches** — only files that differ from the base branch are stored
+- **Any git ref** — the `branch` parameter accepts a branch, a **tag**, or a **commit SHA**. CML resolves it (branch → tag → SHA) and faults it in as a copy-on-write overlay vs the base branch on first query — ideal for debugging a release by tag/SHA with no local checkout
 - **Automatic** — feature branches index on push via git hooks; tag pushes matching `tags.pattern` are pre-indexed on push (others index lazily on first query)
 - **TTL cleanup** — access-based: branches expire after `ttlDays` (default 14); immutable refs (tags/SHAs) after `immutableRefTtlDays` (default 90). Any ref can be **pinned** to exempt it from cleanup (see [Admin API](#admin-api))
 - **Fault-in** — expired or never-indexed refs are re-indexed synchronously on first query (1-2 seconds)

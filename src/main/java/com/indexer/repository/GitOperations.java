@@ -80,10 +80,11 @@ public class GitOperations {
     }
 
     /**
-     * Get the list of files changed between main and a branch SHA.
+     * List files changed between the repo's base branch and a branch/ref SHA.
+     * @param baseBranch the fully-indexed base branch (repo's configured branch)
      */
-    public List<String> diffFromMain(Path repoDir, String branchSha) throws IOException {
-        List<String> cmd = List.of("git", "diff", "--name-only", "main..." + branchSha);
+    public List<String> diffFromBase(Path repoDir, String baseBranch, String branchSha) throws IOException {
+        List<String> cmd = List.of("git", "diff", "--name-only", baseBranch + "..." + branchSha);
         String output = runCommandOutput(cmd, repoDir, null);
         List<String> files = new ArrayList<>();
         for (String line : output.split("\n")) {
@@ -164,6 +165,25 @@ public class GitOperations {
         if (sha.isPresent()) return Optional.of(new ResolvedRef(sha.get(), RefKind.SHA));
 
         return Optional.empty();
+    }
+
+    /**
+     * Detect the remote default branch via {@code git symbolic-ref refs/remotes/origin/HEAD},
+     * returning the short branch name (e.g. "main", "develop"). Empty if origin/HEAD is not set
+     * locally (e.g. a clone made without it). Used only as a fallback when a repo's configured
+     * branch is blank.
+     */
+    public Optional<String> detectDefaultBranch(Path repoDir) {
+        try {
+            String out = runCommandOutput(
+                    List.of("git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"), repoDir, null).trim();
+            if (out.startsWith("origin/")) {
+                out = out.substring("origin/".length());
+            }
+            return out.isBlank() ? Optional.empty() : Optional.of(out);
+        } catch (IOException e) {
+            return Optional.empty();
+        }
     }
 
     /** {@code git rev-parse --verify --quiet <spec>}; empty when the spec doesn't resolve. */

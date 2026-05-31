@@ -91,16 +91,17 @@ public class IndexingPipeline {
     }
 
     /**
-     * Index a feature branch by computing its delta from main.
-     * Only changed files are indexed; unchanged files fall through to main via overlay queries.
+     * Index a feature/tag/sha ref by computing its delta from the repo's base branch.
+     * Only changed files are indexed; unchanged files fall through to the base via overlay queries.
      */
-    public void branchIndex(int repoId, String branch, Path repoDir, String branchSha, RefKind refKind) throws IOException {
-        log.info("Branch indexing repo {} branch {} at SHA {}", repoId, branch, branchSha);
+    public void branchIndex(int repoId, String branch, Path repoDir, String branchSha,
+                            RefKind refKind, String baseBranch) throws IOException {
+        log.info("Branch indexing repo {} branch {} at SHA {} (base {})", repoId, branch, branchSha, baseBranch);
 
-        String mainSha = gitOps.getCurrentSha(repoDir);
+        String baseSha = gitOps.getCurrentSha(repoDir);
 
-        List<String> changedFiles = gitOps.diffFromMain(repoDir, branchSha);
-        log.info("Branch {} has {} files changed from main", branch, changedFiles.size());
+        List<String> changedFiles = gitOps.diffFromBase(repoDir, baseBranch, branchSha);
+        log.info("Branch {} has {} files changed from base {}", branch, changedFiles.size(), baseBranch);
 
         for (String relativePath : changedFiles) {
             try {
@@ -114,7 +115,7 @@ public class IndexingPipeline {
         }
 
         if (branchIndexDao != null) {
-            branchIndexDao.upsert(repoId, branch, mainSha, branchSha, refKind.dbValue());
+            branchIndexDao.upsert(repoId, branch, baseSha, branchSha, refKind.dbValue());
         }
 
         log.info("Branch index complete for repo {} branch {}", repoId, branch);
