@@ -72,9 +72,10 @@ public record IndexerConfig(
         // token can be null — admin API is disabled
     }
 
-    public record BranchConfig(boolean autoIndex, int ttlDays, int cleanupIntervalHours) {
+    public record BranchConfig(boolean autoIndex, int ttlDays, int immutableRefTtlDays, int cleanupIntervalHours) {
         public BranchConfig {
             if (ttlDays <= 0) ttlDays = 14;
+            if (immutableRefTtlDays <= 0) immutableRefTtlDays = 90;
             if (cleanupIntervalHours <= 0) cleanupIntervalHours = 24;
         }
     }
@@ -141,7 +142,7 @@ public record IndexerConfig(
         if (repositories == null) repositories = List.of();
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
-        if (branches == null) branches = new BranchConfig(true, 14, 24);
+        if (branches == null) branches = new BranchConfig(true, 14, 90, 24);
         if (tags == null) tags = new TagConfig(true, "v*");
         if (scip == null) scip = new ScipConfig(7);
         if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of(), null, null);

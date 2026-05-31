@@ -253,6 +253,55 @@ class ConfigLoaderTest {
         assertThat(cfg.tags().pattern()).isEqualTo("v*");
     }
 
+    @Test
+    void parsesImmutableRefTtlDays() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                branches:
+                  ttlDays: 7
+                  immutableRefTtlDays: 120
+                """;
+        ConfigLoader loader = new ConfigLoader(envName -> null);
+        IndexerConfig cfg = loader.load(toStream(yaml));
+
+        assertThat(cfg.branches().ttlDays()).isEqualTo(7);
+        assertThat(cfg.branches().immutableRefTtlDays()).isEqualTo(120);
+    }
+
+    @Test
+    void immutableRefTtlDaysDefaultsTo90WhenAbsent() throws IOException {
+        String yaml = """
+                server:
+                  cloneBaseDir: /tmp/repos
+
+                database:
+                  host: localhost
+                  name: indexer_db
+
+                branches:
+                  ttlDays: 14
+                """;
+        ConfigLoader loader = new ConfigLoader(envName -> null);
+        IndexerConfig cfg = loader.load(toStream(yaml));
+
+        assertThat(cfg.branches().immutableRefTtlDays()).isEqualTo(90);
+    }
+
+    @Test
+    void immutableRefTtlDaysDefaultsTo90WhenBranchesBlockAbsent() throws IOException {
+        // ENV_VAR_YAML has no branches: block — defaults must kick in
+        ConfigLoader loader = new ConfigLoader(varName -> null);
+        IndexerConfig cfg = loader.load(toStream(ENV_VAR_YAML));
+
+        assertThat(cfg.branches().immutableRefTtlDays()).isEqualTo(90);
+    }
+
     private InputStream toStream(String yaml) {
         return new ByteArrayInputStream(yaml.getBytes(StandardCharsets.UTF_8));
     }

@@ -172,8 +172,9 @@ public class ConfigLoader {
         if (node == null) return null;
         boolean autoIndex = !node.has("autoIndex") || node.get("autoIndex").asBoolean(true);
         int ttlDays = node.has("ttlDays") ? node.get("ttlDays").asInt(14) : 14;
+        int immutableRefTtlDays = node.has("immutableRefTtlDays") ? node.get("immutableRefTtlDays").asInt(90) : 90;
         int cleanupIntervalHours = node.has("cleanupIntervalHours") ? node.get("cleanupIntervalHours").asInt(24) : 24;
-        return new IndexerConfig.BranchConfig(autoIndex, ttlDays, cleanupIntervalHours);
+        return new IndexerConfig.BranchConfig(autoIndex, ttlDays, immutableRefTtlDays, cleanupIntervalHours);
     }
 
     private IndexerConfig.TagConfig parseTags(JsonNode node) {
