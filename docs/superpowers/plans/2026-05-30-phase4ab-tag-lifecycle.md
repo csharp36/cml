@@ -561,7 +561,46 @@ git commit -m "feat(webhook): index matching tag pushes; persist ref_kind (name-
 ## Task A6: Poller uses the persisted ref kind
 
 **Files:**
+- Modify: `src/main/java/com/indexer/queue/EventQueuePoller.java`
 - Modify: `src/main/java/com/indexer/Application.java`
+
+> **Note (found during A2 review):** the poller's `eventProcessor` lambda in `Application.java` receives an `EventQueuePoller.ProcessableEvent`, NOT an `IndexingEvent`. `ProcessableEvent` does not yet carry `ref_kind`, so it must be threaded there first (Step 0) before the lambda can read it.
+
+- [ ] **Step 0: Thread `refKind` through `ProcessableEvent`**
+
+In `src/main/java/com/indexer/queue/EventQueuePoller.java`, add `refKind` to the record (after `branch`):
+
+```java
+    public record ProcessableEvent(long eventId, String repoName, String repoPath, String previousSha, String currentSha, String branch, String refKind) {}
+```
+
+Then set it from the primary event at BOTH construction sites in `run()`. The no-additional-pending site:
+
+```java
+                    processableEvent = new ProcessableEvent(
+                            primary.id(),
+                            primary.repoName(),
+                            primary.repoPath(),
+                            primary.previousSha(),
+                            primary.currentSha(),
+                            primary.branch(),
+                            primary.refKind()
+                    );
+```
+
+The deduplicated site (note it keeps `collapsed.previousSha()/currentSha()` and `primary.branch()`/`primary.refKind()`):
+
+```java
+                    processableEvent = new ProcessableEvent(
+                            primary.id(),
+                            primary.repoName(),
+                            primary.repoPath(),
+                            collapsed.previousSha(),
+                            collapsed.currentSha(),
+                            primary.branch(),
+                            primary.refKind()
+                    );
+```
 
 - [ ] **Step 1: Pass `TagConfig` into the webhook construction**
 
@@ -600,7 +639,7 @@ Expected: BUILD SUCCESSFUL (unit tests; integration covered above).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/main/java/com/indexer/Application.java
+git add src/main/java/com/indexer/queue/EventQueuePoller.java src/main/java/com/indexer/Application.java
 git commit -m "feat(poller): index with event ref_kind instead of hardcoded BRANCH"
 ```
 
