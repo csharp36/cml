@@ -5,6 +5,7 @@ import com.indexer.audit.AuditSink;
 import com.indexer.db.DatabaseManager;
 import com.indexer.db.EventDao;
 import com.indexer.db.RepositoryDao;
+import com.indexer.model.IndexingEvent;
 import com.indexer.model.Repository;
 import com.indexer.server.HttpServer;
 import org.junit.jupiter.api.*;
@@ -63,7 +64,8 @@ class GitHubWebhookApiIntegrationTest {
                 "main", "/tmp/cml", "SSH_KEY", "abc", null));
 
         auditSink = mock(AuditSink.class);
-        var api = new GitHubWebhookApi(Map.of("cml", SECRET), repositoryDao, eventDao, auditSink);
+        var api = new GitHubWebhookApi(Map.of("cml", SECRET), repositoryDao, eventDao, auditSink,
+                new com.indexer.config.IndexerConfig.TagConfig(true, "v*"));
 
         int port;
         try (var ss = new ServerSocket(0)) {
@@ -192,5 +194,66 @@ class GitHubWebhookApiIntegrationTest {
                     assertThat(e.authorized()).isTrue();
                     assertThat(e.resultStatus()).isEqualTo("success");
                 });
+    }
+
+    @Test
+    void matchingTagPushEnqueuesWithTagRefKind() throws Exception {
+        String body = "{\"ref\":\"refs/tags/v1.0\",\"before\":\"old\",\"after\":\"new\",\"repository\":{\"name\":\"cml\"}}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(202);
+        IndexingEvent ev = eventDao.claimNextPending("w").orElseThrow();
+        assertThat(ev.branch()).isEqualTo("v1.0");
+        assertThat(ev.refKind()).isEqualTo("tag");
+    }
+
+    @Test
+    void offPatternTagIsAcceptedButNotEnqueued() throws Exception {
+        String body = "{\"ref\":\"refs/tags/nightly-1\",\"before\":\"old\",\"after\":\"new\",\"repository\":{\"name\":\"cml\"}}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
+    }
+
+    @Test
+    void tagDeletionIsNoOp() throws Exception {
+        String body = "{\"ref\":\"refs/tags/v9.9\",\"before\":\"old\","
+                + "\"after\":\"0000000000000000000000000000000000000000\",\"repository\":{\"name\":\"cml\"}}";
+        var resp = post("/webhook/github/cml", body, "push", sign(body));
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(eventDao.countByStatus("pending")).isEqualTo(0);
+    }
+
+    @Test
+    void nameCollisionTagPushIsRecordedAsTagNotBranch() throws Exception {
+        // Regression: repo's configured branch is "main"; a tag named "main" is pushed.
+        // The push event authoritatively says refs/tags/ -> must persist ref_kind=tag,
+        // NOT branch (which is what resolveAnyRef would have wrongly inferred).
+        // Use a catch-all pattern ("*") so that the tag named "main" is actually enqueued,
+        // allowing us to verify its ref_kind is "tag" rather than "branch".
+        var collisionApi = new GitHubWebhookApi(Map.of("cml", SECRET), repositoryDao, eventDao, auditSink,
+                new com.indexer.config.IndexerConfig.TagConfig(true, "*"));
+        int collisionPort;
+        try (var ss = new java.net.ServerSocket(0)) {
+            collisionPort = ss.getLocalPort();
+        }
+        var collisionServer = new HttpServer(eventDao, repositoryDao, null);
+        collisionServer.addRoutes(collisionApi::registerRoutes);
+        collisionServer.start(collisionPort);
+        try {
+            String body = "{\"ref\":\"refs/tags/main\",\"before\":\"old\",\"after\":\"new\",\"repository\":{\"name\":\"cml\"}}";
+            var req = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + collisionPort + "/webhook/github/cml"))
+                    .header("Content-Type", "application/json")
+                    .header("X-GitHub-Event", "push")
+                    .header("X-Hub-Signature-256", sign(body))
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            var resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+            assertThat(resp.statusCode()).isEqualTo(202);
+            IndexingEvent ev = eventDao.claimNextPending("w").orElseThrow();
+            assertThat(ev.refKind()).isEqualTo("tag");
+        } finally {
+            collisionServer.stop();
+        }
     }
 }

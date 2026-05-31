@@ -24,12 +24,13 @@ class BranchIndexDaoTest {
 
     private BranchIndexDao dao;
     private int repoId;
+    private Jdbi jdbi;
 
     @BeforeEach
     void setUp() {
         var dbManager = new DatabaseManager(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
         dbManager.initialize();
-        Jdbi jdbi = dbManager.getJdbi();
+        this.jdbi = dbManager.getJdbi();
         jdbi.useHandle(h -> {
             h.execute("DELETE FROM branch_index");
             h.execute("DELETE FROM repositories");
@@ -53,5 +54,44 @@ class BranchIndexDaoTest {
         dao.upsert(repoId, "x", "m1", "s1", "branch");
         dao.upsert(repoId, "x", "m2", "s2", "sha");
         assertThat(dao.find(repoId, "x").orElseThrow().refKind()).isEqualTo(RefKind.SHA);
+    }
+
+    @Test
+    void setPinnedTogglesAndIsReturned() {
+        dao.upsert(repoId, "v1.0", "m", "s", "tag");
+        assertThat(dao.find(repoId, "v1.0").orElseThrow().pinned()).isFalse();
+        int updated = dao.setPinned(repoId, "v1.0", true);
+        assertThat(updated).isEqualTo(1);
+        assertThat(dao.find(repoId, "v1.0").orElseThrow().pinned()).isTrue();
+    }
+
+    @Test
+    void setPinnedOnMissingRefReturnsZero() {
+        assertThat(dao.setPinned(repoId, "ghost", true)).isEqualTo(0);
+    }
+
+    @Test
+    void expiryIsRefKindAwareAndPinAware() {
+        dao.upsert(repoId, "feature/x", "m", "s1", "branch");
+        dao.upsert(repoId, "v1.0", "m", "s2", "tag");
+        dao.upsert(repoId, "pinnedtag", "m", "s3", "tag");
+        dao.setPinned(repoId, "pinnedtag", true);
+        jdbi.useHandle(h -> h.createUpdate(
+                "UPDATE branch_index SET last_accessed_at = NOW() - INTERVAL '20 days' WHERE repo_id = :r")
+                .bind("r", repoId).execute());
+
+        // branchTtl=14, immutableTtl=90: the 20-day-old branch expires; the tags don't (and pinned never would).
+        var expired = dao.findExpired(14, 90);
+        assertThat(expired).extracting(bi -> bi.branch()).containsExactly("feature/x");
+    }
+
+    @Test
+    void pinnedBranchSurvivesEvenPastBranchTtl() {
+        dao.upsert(repoId, "longlived", "m", "s", "branch");
+        dao.setPinned(repoId, "longlived", true);
+        jdbi.useHandle(h -> h.createUpdate(
+                "UPDATE branch_index SET last_accessed_at = NOW() - INTERVAL '400 days' WHERE repo_id = :r")
+                .bind("r", repoId).execute());
+        assertThat(dao.findExpired(14, 90)).isEmpty();
     }
 }

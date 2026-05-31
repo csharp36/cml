@@ -91,9 +91,10 @@ once, server-side), it **narrows** the diff to symbols on the failing path inste
 tree into the model, and the comparison is semantic, not textual.
 
 **Caveats (be honest):**
-- This requires both builds to be indexed as refs CML knows. Today indexing is keyed by **branch
-  name**; indexing arbitrary **tags/commit SHAs** as builds is proposed in
-  [`docs/proposals/2026-05-29-index-by-build-ref.md`](docs/proposals/2026-05-29-index-by-build-ref.md).
+- Both builds must be indexed as refs CML knows. CML indexes **any git ref** — a branch, a release
+  **tag**, or a raw **commit SHA** — so you can pass `001`/`002` as tags or SHAs and CML faults them
+  in on first query (no local checkout). Release tags matching `tags.pattern` are pre-indexed
+  automatically on push.
 - Full type-resolved precision needs **SCIP uploaded per build SHA** (see [Semantic Indexing](#semantic-indexing-scip)).
 - The symbol-level `diff_branches` is only as good as its parser; reach for `git diff` when you want
   the authoritative file-level answer.
@@ -159,8 +160,13 @@ auth:
 
 branches:
   autoIndex: true
-  ttlDays: 14
+  ttlDays: 14               # branch index TTL (access-based)
+  immutableRefTtlDays: 90   # tag/SHA index TTL (immutable refs live longer)
   cleanupIntervalHours: 24
+
+tags:
+  autoIndex: true           # pre-index tag pushes matching the pattern
+  pattern: "v*"             # non-matching tags index lazily on first query
 EOF
 ```
 
@@ -256,11 +262,12 @@ CML uses a copy-on-write model for branch indexing:
 
 - **Main branch** — fully indexed (all files, symbols, imports, contents)
 - **Feature branches** — only files that differ from main are stored
-- **Automatic** — branches are indexed when pushed via git hooks
-- **TTL cleanup** — branch data expires after configurable inactivity (default 14 days)
-- **Fault-in** — expired branches are re-indexed synchronously on first query (1-2 seconds)
+- **Any git ref** — the `branch` parameter accepts a branch, a **tag**, or a **commit SHA**. CML resolves it (branch → tag → SHA) and faults it in as a copy-on-write overlay vs main on first query — ideal for debugging a release by tag/SHA with no local checkout
+- **Automatic** — feature branches index on push via git hooks; tag pushes matching `tags.pattern` are pre-indexed on push (others index lazily on first query)
+- **TTL cleanup** — access-based: branches expire after `ttlDays` (default 14); immutable refs (tags/SHAs) after `immutableRefTtlDays` (default 90). Any ref can be **pinned** to exempt it from cleanup (see [Admin API](#admin-api))
+- **Fault-in** — expired or never-indexed refs are re-indexed synchronously on first query (1-2 seconds)
 
-When querying a feature branch, pass `branch: "feature/my-branch"` to any tool. CML merges the branch delta with main transparently.
+When querying a feature branch, tag, or SHA, pass `branch: "<ref>"` to any tool. CML merges the ref's delta with main transparently.
 
 ## Semantic Indexing (SCIP)
 
@@ -308,7 +315,7 @@ Then in the repo on GitHub: **Settings → Webhooks → Add webhook**
 - **Secret:** the same value as `webhookSecret`
 - **Events:** "Just the push event"
 
-On a verified push to the configured branch, CML returns `202` and enqueues an indexing event; the index updates asynchronously via the event queue. Pushes to other branches and non-push events (e.g. `ping`) are accepted but ignored. Repos without a `webhookSecret` reject webhook deliveries (fail-closed).
+On a verified push to the configured branch, CML returns `202` and enqueues an indexing event; the index updates asynchronously via the event queue. **Tag pushes** matching `tags.pattern` (default `v*`) are likewise indexed, as immutable refs; non-matching tags are accepted but left to lazy fault-in on first query. Pushes to other branches, tag/branch deletions, and non-push events (e.g. `ping`) are accepted but ignored. Repos without a `webhookSecret` reject webhook deliveries (fail-closed).
 
 ## Authentication & Audit
 
@@ -334,6 +341,8 @@ REST endpoints at `/admin/*` with bearer token auth.
 | `POST` | `/admin/repos` | Add a repo (async clone + index) |
 | `DELETE` | `/admin/repos/:name` | Remove a repo |
 | `POST` | `/admin/repos/:name/reindex` | Trigger full reindex |
+| `POST` | `/admin/repos/:name/refs/:ref/pin` | Pin a ref (tag/SHA/branch) — exempt from TTL cleanup |
+| `DELETE` | `/admin/repos/:name/refs/:ref/pin` | Unpin a ref |
 | `GET` | `/admin/events` | Query indexing events |
 | `POST` | `/admin/events/:id/retry` | Retry a failed event |
 

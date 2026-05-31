@@ -49,7 +49,8 @@ public class BranchIndexDao {
                                 rs.getString("indexed_sha"),
                                 rs.getTimestamp("indexed_at").toInstant(),
                                 rs.getTimestamp("last_accessed_at").toInstant(),
-                                RefKind.fromDb(rs.getString("ref_kind"))
+                                RefKind.fromDb(rs.getString("ref_kind")),
+                                rs.getBoolean("pinned")
                         ))
                         .findOne()
         );
@@ -64,13 +65,18 @@ public class BranchIndexDao {
         );
     }
 
-    public List<BranchIndex> findExpired(int ttlDays) {
+    public List<BranchIndex> findExpired(int branchTtlDays, int immutableTtlDays) {
         return jdbi.withHandle(handle ->
                 handle.createQuery("""
                         SELECT * FROM branch_index
-                        WHERE last_accessed_at < NOW() - CAST(:ttlDays || ' days' AS INTERVAL)
+                        WHERE pinned = FALSE
+                          AND (
+                                (ref_kind = 'branch'       AND last_accessed_at < NOW() - CAST(:branchTtl   || ' days' AS INTERVAL))
+                             OR (ref_kind IN ('tag','sha') AND last_accessed_at < NOW() - CAST(:immutableTtl || ' days' AS INTERVAL))
+                              )
                         """)
-                        .bind("ttlDays", ttlDays)
+                        .bind("branchTtl", branchTtlDays)
+                        .bind("immutableTtl", immutableTtlDays)
                         .map((rs, ctx) -> new BranchIndex(
                                 rs.getInt("id"),
                                 rs.getInt("repo_id"),
@@ -79,9 +85,20 @@ public class BranchIndexDao {
                                 rs.getString("indexed_sha"),
                                 rs.getTimestamp("indexed_at").toInstant(),
                                 rs.getTimestamp("last_accessed_at").toInstant(),
-                                RefKind.fromDb(rs.getString("ref_kind"))
+                                RefKind.fromDb(rs.getString("ref_kind")),
+                                rs.getBoolean("pinned")
                         ))
                         .list()
+        );
+    }
+
+    public int setPinned(int repoId, String branch, boolean pinned) {
+        return jdbi.withHandle(handle ->
+                handle.createUpdate("UPDATE branch_index SET pinned = :pinned WHERE repo_id = :repoId AND branch = :branch")
+                        .bind("pinned", pinned)
+                        .bind("repoId", repoId)
+                        .bind("branch", branch)
+                        .execute()
         );
     }
 

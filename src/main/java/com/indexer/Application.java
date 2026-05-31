@@ -197,7 +197,7 @@ public class Application {
             var queryExecutor = new com.indexer.mcp.QueryExecutor(jdbi, branchIndexDao, indexingPipeline, repositoryDao, gitOps, permissionCache, auditSink);
             adminService = new AdminService(
                     repoManager, repositoryDao, fileDao, symbolDao,
-                    eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+                    eventDao, branchIndexDao, indexingPipeline, gitOps, queryExecutor, jdbi);
             String adminToken = config.admin() != null ? config.admin().token() : null;
             var adminApi = new AdminApi(adminService, adminToken, auditSink);
             httpServer.addRoutes(adminApi::registerRoutes);
@@ -211,7 +211,7 @@ public class Application {
                 }
             }
             var githubWebhookApi = new com.indexer.webhook.GitHubWebhookApi(
-                    webhookSecrets, repositoryDao, eventDao, auditSink);
+                    webhookSecrets, repositoryDao, eventDao, auditSink, config.tags());
             httpServer.addRoutes(githubWebhookApi::registerRoutes);
             log.info("GitHub webhook receiver enabled for {} repo(s)", webhookSecrets.size());
 
@@ -245,10 +245,10 @@ public class Application {
                         indexingPipeline.incrementalIndex(repo.id(), branch, repoDir,
                                 event.previousSha(), event.currentSha());
                     } else {
-                        // Feature branch: fetch, then delta-index from main
+                        // Feature branch / tag / sha: fetch, then delta-index from main using the kind the event recorded.
                         gitOps.fetch(Path.of(repo.clonePath()), null);
-                        // TODO Phase 1 (tag pushes): derive RefKind from the event payload instead of hardcoding BRANCH
-                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()), event.currentSha(), RefKind.BRANCH);
+                        indexingPipeline.branchIndex(repo.id(), branch, Path.of(repo.clonePath()),
+                                event.currentSha(), RefKind.fromDb(event.refKind()));
                     }
                 } catch (Exception e) {
                     throw new RuntimeException("Indexing failed: " + e.getMessage(), e);
@@ -258,13 +258,15 @@ public class Application {
 
             // 8b. Schedule branch cleanup task
             scheduler = Executors.newSingleThreadScheduledExecutor();
-            var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao, config.branches().ttlDays());
+            var cleanupTask = new BranchCleanupTask(branchIndexDao, fileDao,
+                    config.branches().ttlDays(), config.branches().immutableRefTtlDays());
             scheduler.scheduleAtFixedRate(cleanupTask,
                     config.branches().cleanupIntervalHours(),
                     config.branches().cleanupIntervalHours(),
                     TimeUnit.HOURS);
-            log.info("Branch cleanup task scheduled every {}h (TTL={}d)",
-                    config.branches().cleanupIntervalHours(), config.branches().ttlDays());
+            log.info("Branch cleanup task scheduled every {}h (branchTTL={}d, immutableTTL={}d)",
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().ttlDays(), config.branches().immutableRefTtlDays());
 
             // 8c. Schedule SCIP prune task
             // SCIP prune reuses branches.cleanupIntervalHours; add a dedicated scip.pruneIntervalHours if an independent cadence is ever needed.

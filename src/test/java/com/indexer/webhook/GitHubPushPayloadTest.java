@@ -48,4 +48,25 @@ class GitHubPushPayloadTest {
         var normal = new GitHubPushPayload("refs/heads/main", "abc", "def123", null);
         assertThat(normal.isBranchDeletion()).isFalse();
     }
+
+    @Test
+    void parsesBranchRef() {
+        var p = new GitHubPushPayload("refs/heads/main", "a", "b", null);
+        assertThat(p.branch()).isEqualTo("main");
+        assertThat(p.tag()).isNull();
+    }
+
+    @Test
+    void parsesTagRef() {
+        var p = new GitHubPushPayload("refs/tags/v1.2.3", "a", "b", null);
+        assertThat(p.tag()).isEqualTo("v1.2.3");
+        assertThat(p.branch()).isNull();
+    }
+
+    @Test
+    void unknownRefIsNeitherBranchNorTag() {
+        var p = new GitHubPushPayload("refs/notes/commits", "a", "b", null);
+        assertThat(p.branch()).isNull();
+        assertThat(p.tag()).isNull();
+    }
 }

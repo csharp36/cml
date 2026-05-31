@@ -25,9 +25,9 @@ Claude Code <--MCP/stdio|HTTP--> MCP Server
                    (pluggable)
 ```
 
-- **MCP Server:** Exposes 13 tools (11 query + 1 health + 1 sync check). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
+- **MCP Server:** Exposes 17 tools (symbol/code/file search, implementation & reference finders, repo/file/tree summaries, health, sync, SCIP type-hierarchy & references, branch diff/search, and audit-log query/verify). Both stdio and Streamable HTTP transports run simultaneously — stdio for local Claude Code subprocess, Streamable HTTP for remote connections.
 - **Webhook Endpoint:** HTTP POST receiver for git hooks. Hosted on the same HTTP port (`/webhook`). Inserts events into PostgreSQL queue.
-- **GitHub Webhook:** `POST /webhook/github/{repoName}` — receives GitHub push events, authenticates via per-repo `webhookSecret` config field (HMAC-SHA256, `X-Hub-Signature-256`). On a verified push to the repo's configured branch, enqueues an indexing event handled by the existing poller. Feature-branch pushes and non-push events (e.g. `ping`) are accepted but ignored. Fail-closed: repos without a `webhookSecret` reject all deliveries.
+- **GitHub Webhook:** `POST /webhook/github/{repoName}` — receives GitHub push events, authenticates via per-repo `webhookSecret` config field (HMAC-SHA256, `X-Hub-Signature-256`). On a verified push to the repo's configured branch, enqueues an indexing event handled by the existing poller. **Tag pushes** matching `tags.pattern` (default `v*`) are also indexed, as immutable refs; the event carries a persisted `ref_kind` so the poller indexes a tag/SHA correctly rather than assuming a branch (name-collision-safe — a tag named like a branch is still recorded as a tag). Other-branch pushes, tag/branch deletions, and non-push events (e.g. `ping`) are accepted but ignored. Fail-closed: repos without a `webhookSecret` reject all deliveries.
 - **Repository Manager:** Clones repos, resolves auth via pluggable AuthProvider, installs git hooks.
 - **Indexing Pipeline:** Polls PostgreSQL event queue with `SKIP LOCKED`. Multi-instance safe.
 - **AuthProvider:** Pluggable interface supporting SSH, tokens, OAuth2, mTLS, Kerberos, GCM, Vault, AWS/GCP secret managers.
@@ -301,6 +301,10 @@ Git hooks fire on every commit/merge/rebase. Events POST to the webhook and get 
 | `check_sync` | Compare local HEAD SHA with indexed SHA | Sync status, recommended action |
 | `get_type_hierarchy` | Type hierarchy from SCIP data (ref-aware: resolves SCIP at the given branch/tag/SHA) | Supertypes, subtypes (recursive tree) |
 | `get_symbol_references` | Symbol relationships from SCIP data (ref-aware: resolves SCIP at the given branch/tag/SHA) | Flat list of related symbols |
+| `diff_branches` | Compare two branches/tags/SHAs | Files/symbols added, removed, changed |
+| `search_branches` | Search symbols across many branches | Matches grouped by branch |
+| `query_audit_log` | Query the tamper-evident audit log | Filtered audit events |
+| `verify_audit_chain` | Verify audit-log hash-chain integrity | Validation result |
 
 All tools except `get_index_health` accept an optional `branch` parameter. When omitted, queries default to the repo's configured branch (usually `main`). When on a feature branch, pass `branch` to get branch-aware results using the copy-on-write overlay. `get_type_hierarchy` and `get_symbol_references` also accept `branch` (any branch/tag/SHA); the param resolves SCIP at that ref's SHA, enabling type-resolved queries against any indexed release or commit.
 
@@ -310,8 +314,9 @@ The indexer supports multiple branches per repository using a copy-on-write mode
 
 - **Main branch:** Fully indexed (all files, symbols, imports, contents)
 - **Feature branches:** Only files that differ from main are stored. Queries merge branch-specific files with main via an overlay.
-- **Automatic indexing:** Feature branches are indexed automatically when pushed via webhook
-- **TTL cleanup:** Branch data expires after configurable inactivity (default 14 days)
+- **Automatic indexing:** Feature branches are indexed automatically when pushed via webhook; tag pushes matching `tags.pattern` are pre-indexed on push (others fault in on first query)
+- **TTL cleanup:** Access-based. Branch data expires after `ttlDays` inactivity (default 14); immutable refs (tags/SHAs) after `immutableRefTtlDays` (default 90)
+- **Pinning:** Any indexed ref can be pinned via the Admin API (`POST /admin/repos/:name/refs/:ref/pin`) to exempt it from TTL cleanup; re-indexing a pinned ref preserves the pin
 - **Fault-in:** If branch data is expired or missing, the first query triggers a synchronous re-index (1-2 seconds)
 
 ### Configuration
@@ -319,8 +324,13 @@ The indexer supports multiple branches per repository using a copy-on-write mode
 ```yaml
 branches:
   autoIndex: true           # Index branches automatically on push
-  ttlDays: 14               # Days of inactivity before branch data is cleaned up
+  ttlDays: 14               # Branch index TTL — days of inactivity before cleanup (access-based)
+  immutableRefTtlDays: 90   # Tag/SHA index TTL — immutable refs live longer (access-based)
   cleanupIntervalHours: 24  # How often the cleanup task runs
+
+tags:
+  autoIndex: true           # Pre-index tag pushes whose name matches the pattern
+  pattern: "v*"             # Glob (only * and ? are wildcards); non-matching tags index lazily on first query
 
 scip:
   pruneGraceDays: 7         # SCIP uploads within this window are kept even if the ref is no longer live
@@ -336,9 +346,10 @@ copy-on-write overlay vs `main`, exactly like a feature branch. The ref kind
 "debug a production release by tag or SHA, with no local checkout" workflow:
 pass the release tag as `branch` to any query or to `diff_branches`.
 
-Tags and SHAs are immutable, so once indexed they never need re-indexing.
-(Retention/pinning of tag indexes is handled separately — see the tagged-release
-design.)
+Tags and SHAs are immutable, so once indexed they never need re-indexing. They are
+retained on an access-based `immutableRefTtlDays` window (default 90, vs 14 for
+branches), and any ref can be pinned via the Admin API to exempt it from cleanup
+entirely.
 
 ## Admin API
 
@@ -371,6 +382,8 @@ Authorization: Bearer <your-admin-token>
 | `POST` | `/admin/repos` | Add a new repo (async clone + index) |
 | `DELETE` | `/admin/repos/:name` | Purge repo (DB records + disk clone) |
 | `POST` | `/admin/repos/:name/reindex` | Trigger full reindex (async) |
+| `POST` | `/admin/repos/:name/refs/:ref/pin` | Pin a ref (tag/SHA/branch) — exempt from TTL cleanup |
+| `DELETE` | `/admin/repos/:name/refs/:ref/pin` | Unpin a ref |
 | `GET` | `/admin/events` | Query events (`?repo=&status=&since=&limit=50`) |
 | `POST` | `/admin/events/:id/retry` | Retry a failed event |
 

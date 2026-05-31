@@ -14,11 +14,19 @@ public record GitHubPushPayload(String ref, String before, String after, Reposit
     }
 
     private static final String HEADS_PREFIX = "refs/heads/";
+    private static final String TAGS_PREFIX = "refs/tags/";
 
     /** The branch name from {@code ref}, or null if the ref is not a branch. */
     public String branch() {
         return (ref != null && ref.startsWith(HEADS_PREFIX))
                 ? ref.substring(HEADS_PREFIX.length())
+                : null;
+    }
+
+    /** The tag name from {@code ref}, or null if the ref is not a tag. */
+    public String tag() {
+        return (ref != null && ref.startsWith(TAGS_PREFIX))
+                ? ref.substring(TAGS_PREFIX.length())
                 : null;
     }
 

@@ -13,6 +13,7 @@ public record IndexerConfig(
         LanguagesConfig languages,
         AdminConfig admin,
         BranchConfig branches,
+        TagConfig tags,
         ScipConfig scip,
         @JsonProperty("auth") McpAuthConfig mcpAuth
 ) {
@@ -71,10 +72,37 @@ public record IndexerConfig(
         // token can be null — admin API is disabled
     }
 
-    public record BranchConfig(boolean autoIndex, int ttlDays, int cleanupIntervalHours) {
+    public record BranchConfig(boolean autoIndex, int ttlDays, int immutableRefTtlDays, int cleanupIntervalHours) {
         public BranchConfig {
             if (ttlDays <= 0) ttlDays = 14;
+            if (immutableRefTtlDays <= 0) immutableRefTtlDays = 90;
             if (cleanupIntervalHours <= 0) cleanupIntervalHours = 24;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record TagConfig(boolean autoIndex, String pattern) {
+        public TagConfig {
+            if (pattern == null || pattern.isBlank()) pattern = "v*";
+        }
+
+        /** True when {@code tagName} matches the glob (only {@code *} and {@code ?} are wildcards). */
+        public boolean matches(String tagName) {
+            return tagName != null && tagName.matches(globToRegex(pattern));
+        }
+
+        private static String globToRegex(String glob) {
+            StringBuilder sb = new StringBuilder("^");
+            for (int i = 0; i < glob.length(); i++) {
+                char c = glob.charAt(i);
+                switch (c) {
+                    case '*' -> sb.append(".*");
+                    case '?' -> sb.append('.');
+                    case '.', '\\', '+', '(', ')', '[', ']', '{', '}', '^', '$', '|' -> sb.append('\\').append(c);
+                    default -> sb.append(c);
+                }
+            }
+            return sb.append('$').toString();
         }
     }
 
@@ -114,7 +142,8 @@ public record IndexerConfig(
         if (repositories == null) repositories = List.of();
         if (languages == null) languages = new LanguagesConfig(Map.of());
         // admin can be null — admin API disabled
-        if (branches == null) branches = new BranchConfig(true, 14, 24);
+        if (branches == null) branches = new BranchConfig(true, 14, 90, 24);
+        if (tags == null) tags = new TagConfig(true, "v*");
         if (scip == null) scip = new ScipConfig(7);
         if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of(), null, null);
     }

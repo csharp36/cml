@@ -28,6 +28,7 @@ class AdminServiceTest {
     private FileDao fileDao;
     private SymbolDao symbolDao;
     private EventDao eventDao;
+    private BranchIndexDao branchIndexDao;
     private IndexingPipeline indexingPipeline;
     private GitOperations gitOps;
     private QueryExecutor queryExecutor;
@@ -40,6 +41,7 @@ class AdminServiceTest {
         fileDao = mock(FileDao.class);
         symbolDao = mock(SymbolDao.class);
         eventDao = mock(EventDao.class);
+        branchIndexDao = mock(BranchIndexDao.class);
         indexingPipeline = mock(IndexingPipeline.class);
         gitOps = mock(GitOperations.class);
         queryExecutor = mock(QueryExecutor.class);
@@ -49,7 +51,7 @@ class AdminServiceTest {
 
         adminService = new AdminService(
                 repoManager, repositoryDao, fileDao, symbolDao,
-                eventDao, indexingPipeline, gitOps, queryExecutor, jdbi);
+                eventDao, branchIndexDao, indexingPipeline, gitOps, queryExecutor, jdbi);
     }
 
     @Test
@@ -80,7 +82,7 @@ class AdminServiceTest {
     @Test
     void retryEventResetsPendingStatus() {
         var event = new IndexingEvent(42L, "repo", "/path", "post-commit",
-                "aaa", "bbb", "main", "failed", "error msg",
+                "aaa", "bbb", "main", "branch", "failed", "error msg",
                 Instant.now(), null, null, null);
         when(eventDao.findById(42L)).thenReturn(Optional.of(event));
         when(eventDao.resetToPending(42L)).thenReturn(1);
@@ -95,7 +97,7 @@ class AdminServiceTest {
     @Test
     void retryEventThrowsForNonFailedEvent() {
         var event = new IndexingEvent(42L, "repo", "/path", "post-commit",
-                "aaa", "bbb", "main", "completed", null,
+                "aaa", "bbb", "main", "branch", "completed", null,
                 Instant.now(), null, null, null);
         when(eventDao.findById(42L)).thenReturn(Optional.of(event));
 

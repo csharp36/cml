@@ -19,24 +19,26 @@ public class BranchCleanupTask implements Runnable {
 
     private final BranchIndexDao branchIndexDao;
     private final FileDao fileDao;
-    private final int ttlDays;
+    private final int branchTtlDays;
+    private final int immutableTtlDays;
 
-    public BranchCleanupTask(BranchIndexDao branchIndexDao, FileDao fileDao, int ttlDays) {
+    public BranchCleanupTask(BranchIndexDao branchIndexDao, FileDao fileDao, int branchTtlDays, int immutableTtlDays) {
         this.branchIndexDao = branchIndexDao;
         this.fileDao = fileDao;
-        this.ttlDays = ttlDays;
+        this.branchTtlDays = branchTtlDays;
+        this.immutableTtlDays = immutableTtlDays;
     }
 
     @Override
     public void run() {
         try {
-            List<BranchIndex> expired = branchIndexDao.findExpired(ttlDays);
+            List<BranchIndex> expired = branchIndexDao.findExpired(branchTtlDays, immutableTtlDays);
             if (expired.isEmpty()) {
-                log.debug("Branch cleanup: no expired branches found (TTL={}d)", ttlDays);
+                log.debug("Branch cleanup: no expired refs (branchTTL={}d, immutableTTL={}d)", branchTtlDays, immutableTtlDays);
                 return;
             }
-
-            log.info("Branch cleanup: found {} expired branch indices (TTL={}d)", expired.size(), ttlDays);
+            log.info("Branch cleanup: found {} expired refs (branchTTL={}d, immutableTTL={}d)",
+                    expired.size(), branchTtlDays, immutableTtlDays);
 
             for (BranchIndex bi : expired) {
                 try {

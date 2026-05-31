@@ -46,7 +46,7 @@ Create `.claude/mcp_servers.json` in the project root:
 ```json
 {
   "source-code-indexer": {
-    "type": "sse",
+    "type": "http",
     "url": "<indexer-url>/mcp"
   }
 }
@@ -69,4 +69,4 @@ Try these:
 - "Is my local repo in sync with the index?"   → check_sync
 ```
 
-Note: When on a feature branch, include `branch: "<branch_name>"` in all subsequent tool calls so the index returns branch-aware results.
+Note: The `branch` parameter on any tool accepts **any git ref** — a feature branch, a release **tag**, or a commit **SHA**. When on a feature branch (or to inspect a specific release/build), include `branch: "<ref>"` in subsequent tool calls so the index returns ref-aware results (CML faults the ref in on first query if it isn't already indexed).
