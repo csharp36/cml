@@ -312,8 +312,8 @@ All tools except `get_index_health` accept an optional `branch` parameter. When 
 
 The indexer supports multiple branches per repository using a copy-on-write model:
 
-- **Main branch:** Fully indexed (all files, symbols, imports, contents)
-- **Feature branches:** Only files that differ from main are stored. Queries merge branch-specific files with main via an overlay.
+- **Base branch:** Each repo's configured `branch` (e.g. `main`, `develop`) is the fully-indexed base (all files, symbols, imports, contents). The indexer keys the overlay off this configured branch — not the literal `main` — so repos whose default branch is `develop`/`master` index and query correctly. If the configured branch is blank, the base falls back to the remote default (`origin/HEAD`).
+- **Feature branches:** Only files that differ from the base branch are stored. Queries merge branch-specific files with the base layer via an overlay.
 - **Automatic indexing:** Feature branches are indexed automatically when pushed via webhook; tag pushes matching `tags.pattern` are pre-indexed on push (others fault in on first query)
 - **TTL cleanup:** Access-based. Branch data expires after `ttlDays` inactivity (default 14); immutable refs (tags/SHAs) after `immutableRefTtlDays` (default 90)
 - **Pinning:** Any indexed ref can be pinned via the Admin API (`POST /admin/repos/:name/refs/:ref/pin`) to exempt it from TTL cleanup; re-indexing a pinned ref preserves the pin
@@ -341,7 +341,7 @@ scip:
 The `branch` parameter on every branch-aware tool accepts **any git ref** — a
 remote branch name, a tag (e.g. `v2.3.1`), or a commit SHA. On first query the
 indexer resolves it (remote branch → tag → raw commit) and faults it in as a
-copy-on-write overlay vs `main`, exactly like a feature branch. The ref kind
+copy-on-write overlay vs the repo's base branch, exactly like a feature branch. The ref kind
 (branch / tag / SHA) is recorded in `branch_index.ref_kind`. This powers the
 "debug a production release by tag or SHA, with no local checkout" workflow:
 pass the release tag as `branch` to any query or to `diff_branches`.
