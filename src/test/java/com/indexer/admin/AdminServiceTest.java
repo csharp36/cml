@@ -80,7 +80,7 @@ class AdminServiceTest {
     @Test
     void retryEventResetsPendingStatus() {
         var event = new IndexingEvent(42L, "repo", "/path", "post-commit",
-                "aaa", "bbb", "main", "failed", "error msg",
+                "aaa", "bbb", "main", "branch", "failed", "error msg",
                 Instant.now(), null, null, null);
         when(eventDao.findById(42L)).thenReturn(Optional.of(event));
         when(eventDao.resetToPending(42L)).thenReturn(1);
@@ -95,7 +95,7 @@ class AdminServiceTest {
     @Test
     void retryEventThrowsForNonFailedEvent() {
         var event = new IndexingEvent(42L, "repo", "/path", "post-commit",
-                "aaa", "bbb", "main", "completed", null,
+                "aaa", "bbb", "main", "branch", "completed", null,
                 Instant.now(), null, null, null);
         when(eventDao.findById(42L)).thenReturn(Optional.of(event));
 

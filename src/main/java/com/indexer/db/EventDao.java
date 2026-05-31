@@ -15,11 +15,34 @@ public class EventDao {
         this.jdbi = jdbi;
     }
 
+    private static IndexingEvent mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new IndexingEvent(
+                rs.getLong("id"),
+                rs.getString("repo_name"),
+                rs.getString("repo_path"),
+                rs.getString("event_type"),
+                rs.getString("previous_sha"),
+                rs.getString("current_sha"),
+                rs.getString("branch"),
+                rs.getString("ref_kind"),
+                rs.getString("status"),
+                rs.getString("error_message"),
+                rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,
+                rs.getTimestamp("started_at") != null ? rs.getTimestamp("started_at").toInstant() : null,
+                rs.getTimestamp("completed_at") != null ? rs.getTimestamp("completed_at").toInstant() : null,
+                rs.getString("worker_id"));
+    }
+
+    /** Backward-compatible overload — defaults ref_kind to 'branch' (used by the generic /webhook). */
     public long insert(String repoName, String repoPath, String eventType, String previousSha, String currentSha, String branch) {
+        return insert(repoName, repoPath, eventType, previousSha, currentSha, branch, "branch");
+    }
+
+    public long insert(String repoName, String repoPath, String eventType, String previousSha, String currentSha, String branch, String refKind) {
         return jdbi.withHandle(handle ->
                 handle.createUpdate("""
-                        INSERT INTO indexing_events (repo_name, repo_path, event_type, previous_sha, current_sha, branch)
-                        VALUES (:repoName, :repoPath, :eventType, :previousSha, :currentSha, :branch)
+                        INSERT INTO indexing_events (repo_name, repo_path, event_type, previous_sha, current_sha, branch, ref_kind)
+                        VALUES (:repoName, :repoPath, :eventType, :previousSha, :currentSha, :branch, :refKind)
                         """)
                         .bind("repoName", repoName)
                         .bind("repoPath", repoPath)
@@ -27,6 +50,7 @@ public class EventDao {
                         .bind("previousSha", previousSha)
                         .bind("currentSha", currentSha)
                         .bind("branch", branch != null ? branch : "main")
+                        .bind("refKind", refKind != null ? refKind : "branch")
                         .executeAndReturnGeneratedKeys("id")
                         .mapTo(Long.class)
                         .one()
@@ -48,27 +72,7 @@ public class EventDao {
                         RETURNING *
                         """)
                         .bind("workerId", workerId)
-                        .map((rs, ctx) -> new IndexingEvent(
-                                rs.getLong("id"),
-                                rs.getString("repo_name"),
-                                rs.getString("repo_path"),
-                                rs.getString("event_type"),
-                                rs.getString("previous_sha"),
-                                rs.getString("current_sha"),
-                                rs.getString("branch"),
-                                rs.getString("status"),
-                                rs.getString("error_message"),
-                                rs.getTimestamp("created_at") != null
-                                        ? rs.getTimestamp("created_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("started_at") != null
-                                        ? rs.getTimestamp("started_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("completed_at") != null
-                                        ? rs.getTimestamp("completed_at").toInstant()
-                                        : null,
-                                rs.getString("worker_id")
-                        ))
+                        .map((rs, ctx) -> mapRow(rs))
                         .findOne()
         );
     }
@@ -106,27 +110,7 @@ public class EventDao {
                         ORDER BY created_at
                         """)
                         .bind("repoName", repoName)
-                        .map((rs, ctx) -> new IndexingEvent(
-                                rs.getLong("id"),
-                                rs.getString("repo_name"),
-                                rs.getString("repo_path"),
-                                rs.getString("event_type"),
-                                rs.getString("previous_sha"),
-                                rs.getString("current_sha"),
-                                rs.getString("branch"),
-                                rs.getString("status"),
-                                rs.getString("error_message"),
-                                rs.getTimestamp("created_at") != null
-                                        ? rs.getTimestamp("created_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("started_at") != null
-                                        ? rs.getTimestamp("started_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("completed_at") != null
-                                        ? rs.getTimestamp("completed_at").toInstant()
-                                        : null,
-                                rs.getString("worker_id")
-                        ))
+                        .map((rs, ctx) -> mapRow(rs))
                         .list()
         );
     }
@@ -149,27 +133,7 @@ public class EventDao {
                         LIMIT :limit
                         """)
                         .bind("limit", limit)
-                        .map((rs, ctx) -> new IndexingEvent(
-                                rs.getLong("id"),
-                                rs.getString("repo_name"),
-                                rs.getString("repo_path"),
-                                rs.getString("event_type"),
-                                rs.getString("previous_sha"),
-                                rs.getString("current_sha"),
-                                rs.getString("branch"),
-                                rs.getString("status"),
-                                rs.getString("error_message"),
-                                rs.getTimestamp("created_at") != null
-                                        ? rs.getTimestamp("created_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("started_at") != null
-                                        ? rs.getTimestamp("started_at").toInstant()
-                                        : null,
-                                rs.getTimestamp("completed_at") != null
-                                        ? rs.getTimestamp("completed_at").toInstant()
-                                        : null,
-                                rs.getString("worker_id")
-                        ))
+                        .map((rs, ctx) -> mapRow(rs))
                         .list()
         );
     }
@@ -178,21 +142,7 @@ public class EventDao {
         return jdbi.withHandle(handle ->
                 handle.createQuery("SELECT * FROM indexing_events WHERE id = :id")
                         .bind("id", id)
-                        .map((rs, ctx) -> new IndexingEvent(
-                                rs.getLong("id"),
-                                rs.getString("repo_name"),
-                                rs.getString("repo_path"),
-                                rs.getString("event_type"),
-                                rs.getString("previous_sha"),
-                                rs.getString("current_sha"),
-                                rs.getString("branch"),
-                                rs.getString("status"),
-                                rs.getString("error_message"),
-                                rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,
-                                rs.getTimestamp("started_at") != null ? rs.getTimestamp("started_at").toInstant() : null,
-                                rs.getTimestamp("completed_at") != null ? rs.getTimestamp("completed_at").toInstant() : null,
-                                rs.getString("worker_id")
-                        ))
+                        .map((rs, ctx) -> mapRow(rs))
                         .findOne()
         );
     }
@@ -232,21 +182,7 @@ public class EventDao {
             if (since != null) query.bind("since", java.sql.Timestamp.from(since));
             query.bind("limit", limit);
 
-            return query.map((rs, ctx) -> new IndexingEvent(
-                    rs.getLong("id"),
-                    rs.getString("repo_name"),
-                    rs.getString("repo_path"),
-                    rs.getString("event_type"),
-                    rs.getString("previous_sha"),
-                    rs.getString("current_sha"),
-                    rs.getString("branch"),
-                    rs.getString("status"),
-                    rs.getString("error_message"),
-                    rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toInstant() : null,
-                    rs.getTimestamp("started_at") != null ? rs.getTimestamp("started_at").toInstant() : null,
-                    rs.getTimestamp("completed_at") != null ? rs.getTimestamp("completed_at").toInstant() : null,
-                    rs.getString("worker_id")
-            )).list();
+            return query.map((rs, ctx) -> mapRow(rs)).list();
         });
     }
 
