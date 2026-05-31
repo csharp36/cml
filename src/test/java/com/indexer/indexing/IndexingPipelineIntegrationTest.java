@@ -122,8 +122,8 @@ class IndexingPipelineIntegrationTest {
         // Resolve tag commit SHA
         String tagSha = gitOps.getShaForRef(repoDir, "refs/tags/v1.0^{commit}");
 
-        // Branch-index the tag
-        pipeline.branchIndex(repoId, "v1.0", repoDir, tagSha, RefKind.TAG);
+        // Branch-index the tag (base branch is "main" for this test repo)
+        pipeline.branchIndex(repoId, "v1.0", repoDir, tagSha, RefKind.TAG, "main");
 
         // Verify the branch_index row has ref_kind = "tag"
         var entry = new BranchIndexDao(jdbi).find(repoId, "v1.0");
