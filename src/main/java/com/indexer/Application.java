@@ -211,7 +211,7 @@ public class Application {
                 }
             }
             var githubWebhookApi = new com.indexer.webhook.GitHubWebhookApi(
-                    webhookSecrets, repositoryDao, eventDao, auditSink);
+                    webhookSecrets, repositoryDao, eventDao, auditSink, config.tags());
             httpServer.addRoutes(githubWebhookApi::registerRoutes);
             log.info("GitHub webhook receiver enabled for {} repo(s)", webhookSecrets.size());
 

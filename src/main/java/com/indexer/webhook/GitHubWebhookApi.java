@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.indexer.audit.AuditEvent;
 import com.indexer.audit.AuditSink;
 import com.indexer.auth.CallerIdentity;
+import com.indexer.config.IndexerConfig.TagConfig;
 import com.indexer.db.EventDao;
 import com.indexer.db.RepositoryDao;
+import com.indexer.repository.RefKind;
 import io.javalin.config.RoutesConfig;
 import io.javalin.http.Context;
 import org.slf4j.Logger;
@@ -28,13 +30,15 @@ public class GitHubWebhookApi {
     private final RepositoryDao repositoryDao;
     private final EventDao eventDao;
     private final AuditSink auditSink;
+    private final TagConfig tags;
 
     public GitHubWebhookApi(Map<String, String> webhookSecrets, RepositoryDao repositoryDao,
-                            EventDao eventDao, AuditSink auditSink) {
+                            EventDao eventDao, AuditSink auditSink, TagConfig tags) {
         this.webhookSecrets = webhookSecrets;
         this.repositoryDao = repositoryDao;
         this.eventDao = eventDao;
         this.auditSink = auditSink;
+        this.tags = tags;
     }
 
     public void registerRoutes(RoutesConfig routes) {
@@ -81,22 +85,46 @@ public class GitHubWebhookApi {
             return;
         }
 
-        String branch = payload.branch();
-        if (branch == null || !branch.equals(repo.branch())) {
-            ctx.status(200).json(Map.of("status", "ignored", "reason", "branch not indexed: " + branch));
-            return;
-        }
-        if (payload.isBranchDeletion()) {
-            ctx.status(200).json(Map.of("status", "ignored", "reason", "branch deletion"));
+        String branchName = payload.branch();
+        String tagName = payload.tag();
+
+        if (branchName != null) {
+            if (!branchName.equals(repo.branch())) {
+                ctx.status(200).json(Map.of("status", "ignored", "reason", "branch not indexed: " + branchName));
+                return;
+            }
+            if (payload.isBranchDeletion()) {
+                ctx.status(200).json(Map.of("status", "ignored", "reason", "branch deletion"));
+                return;
+            }
+            enqueue(ctx, repoName, repo.clonePath(), payload, branchName, RefKind.BRANCH);
             return;
         }
 
-        long eventId = eventDao.insert(repoName, repo.clonePath(), "github_push",
-                payload.before(), payload.after(), branch);
+        if (tagName != null) {
+            if (payload.isBranchDeletion()) { // all-zero `after` == tag deletion
+                ctx.status(200).json(Map.of("status", "ignored", "reason", "tag deletion"));
+                return;
+            }
+            if (!tags.autoIndex() || !tags.matches(tagName)) {
+                ctx.status(200).json(Map.of("status", "ignored", "reason", "tag not auto-indexed: " + tagName));
+                return;
+            }
+            enqueue(ctx, repoName, repo.clonePath(), payload, tagName, RefKind.TAG);
+            return;
+        }
+
+        ctx.status(200).json(Map.of("status", "ignored", "reason", "unsupported ref: " + payload.ref()));
+    }
+
+    private void enqueue(Context ctx, String repoName, String clonePath,
+                         GitHubPushPayload payload, String ref, RefKind kind) {
+        long eventId = eventDao.insert(repoName, clonePath, "github_push",
+                payload.before(), payload.after(), ref, kind.dbValue());
         eventDao.notifyNewEvent();
         auditEnqueue(ctx, repoName, eventId);
-        log.info("GitHub webhook event #{} for repo {} ({} -> {})",
-                eventId, repoName, payload.before(), payload.after());
+        log.info("GitHub webhook event #{} for repo {} ref {} ({}) ({} -> {})",
+                eventId, repoName, ref, kind, payload.before(), payload.after());
         ctx.status(202).json(Map.of("eventId", eventId));
     }
 
