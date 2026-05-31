@@ -5,6 +5,11 @@ set -euo pipefail
 WT="$1"; TESTS="$2"
 cd "$WT"
 MVN="mvn"; [[ -x ./mvnw ]] && MVN="./mvnw"
-timeout 1800 "$MVN" -q -pl hazelcast -am \
+# Portable timeout: use timeout/gtimeout if present (Linux/coreutils), else run uncapped (macOS).
+# Plain string (not an array) so it expands to nothing safely under `set -u` on bash 3.2.
+TO=""
+if command -v timeout >/dev/null 2>&1; then TO="timeout 1800"
+elif command -v gtimeout >/dev/null 2>&1; then TO="gtimeout 1800"; fi
+$TO "$MVN" -q -pl hazelcast -am \
   -Dtest="$TESTS" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false \
   test
