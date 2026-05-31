@@ -14,8 +14,10 @@ RES="$R/result-${ARM}-${RUN_ID}.json"
 cleanup() { git -C "$HZ" worktree remove --force "$WT" 2>/dev/null || true; }
 trap cleanup EXIT
 
-git -C "$HZ" worktree add --force --detach "$WT" "$BASE" >/dev/null 2>&1
-git -C "$WT" apply "$BENCH/task/test_patch.diff"
+git -C "$HZ" worktree add --force --detach "$WT" "$BASE" >/dev/null 2>&1 \
+  || { echo "[$ARM/$RUN_ID] ABORT: worktree add failed"; exit 5; }
+git -C "$WT" apply "$BENCH/task/test_patch.diff" \
+  || { echo "[$ARM/$RUN_ID] ABORT: test_patch apply failed"; exit 4; }
 
 if "$BENCH/task/oracle.sh" "$WT" "$TESTS" >/dev/null 2>&1; then
   echo "[$ARM/$RUN_ID] ABORT: oracle GREEN before run (bad worktree)"; exit 3; fi
@@ -33,13 +35,18 @@ WALL=$(python3 -c "print(f'{$END-$START:.2f}')")
 
 if "$BENCH/task/oracle.sh" "$WT" "$TESTS" > "$R/oracle-${ARM}-${RUN_ID}.log" 2>&1; then PASS=1; else PASS=0; fi
 
-IN=$(jq -r '.usage.input_tokens // 0' "$RES" 2>/dev/null || echo 0)
-OUT=$(jq -r '.usage.output_tokens // 0' "$RES" 2>/dev/null || echo 0)
-CR=$(jq -r '.usage.cache_read_input_tokens // 0' "$RES" 2>/dev/null || echo 0)
-CC=$(jq -r '.usage.cache_creation_input_tokens // 0' "$RES" 2>/dev/null || echo 0)
-TURNS=$(jq -r '.num_turns // 0' "$RES" 2>/dev/null || echo 0)
-ERR=$(jq -r '.is_error // false' "$RES" 2>/dev/null || echo true)
-DENIES=$(grep -c '"decision":"deny"' "$AUDIT" 2>/dev/null || echo 0)
+if jq -e . "$RES" >/dev/null 2>&1; then
+  IN=$(jq -r '.usage.input_tokens // 0' "$RES")
+  OUT=$(jq -r '.usage.output_tokens // 0' "$RES")
+  CR=$(jq -r '.usage.cache_read_input_tokens // 0' "$RES")
+  CC=$(jq -r '.usage.cache_creation_input_tokens // 0' "$RES")
+  TURNS=$(jq -r '.num_turns // 0' "$RES")
+  COST=$(jq -r '.total_cost_usd // 0' "$RES")
+  ERR=$(jq -r '.is_error // false' "$RES")
+else
+  IN=0; OUT=0; CR=0; CC=0; TURNS=0; COST=0; ERR=crashed; PASS=0
+fi
+DENIES=$(grep -c '"decision":"deny"' "$AUDIT" 2>/dev/null || true); DENIES=${DENIES:-0}
 
-echo "${ARM},${RUN_ID},${PASS},${IN},${OUT},${CR},${CC},${TURNS},${WALL},${DENIES},${ERR}" >> "$R/results.csv"
+echo "${ARM},${RUN_ID},${PASS},${IN},${OUT},${CR},${CC},${TURNS},${WALL},${COST},${DENIES},${ERR}" >> "$R/results.csv"
 echo "[$ARM/$RUN_ID] pass=$PASS in=$IN out=$OUT turns=$TURNS wall=${WALL}s denied_attempts=$DENIES is_error=$ERR"

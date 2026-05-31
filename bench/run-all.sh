@@ -7,7 +7,7 @@ N="${1:-10}"
 R="$BENCH/results"; mkdir -p "$R"
 
 bash "$BENCH/preflight.sh"
-echo "arm,run_id,pass,in_tokens,out_tokens,cache_read,cache_create,turns,wall_s,denied_attempts,is_error" > "$R/results.csv"
+echo "arm,run_id,pass,in_tokens,out_tokens,cache_read,cache_create,turns,wall_s,cost_usd,denied_attempts,is_error" > "$R/results.csv"
 
 echo "== smoke (run 0) =="
 for arm in semantic baseline; do bash "$BENCH/run-one.sh" "$arm" 0; done

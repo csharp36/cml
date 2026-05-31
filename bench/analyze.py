@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Nonparametric analysis of benchmark results. Usage: analyze.py results.csv"""
-import csv, sys, statistics as st, random
+import csv, sys, statistics as st, random, math
 
 random.seed(12345)  # deterministic bootstrap
 
@@ -11,7 +11,9 @@ def load(path):
             for k in ("pass","in_tokens","out_tokens","cache_read","cache_create","turns","denied_attempts"):
                 r[k] = int(float(r[k]))
             r["wall_s"] = float(r["wall_s"])
-            r["total_tokens"] = r["in_tokens"] + r["out_tokens"]
+            r["cost_usd"] = float(r.get("cost_usd", 0) or 0)
+            r["io_tokens"] = r["in_tokens"] + r["out_tokens"]
+            r["billable_tokens"] = r["in_tokens"] + r["out_tokens"] + r["cache_read"] + r["cache_create"]
             rows.append(r)
     return rows
 
@@ -42,16 +44,16 @@ def main():
         n = len(rs); passed = sum(r["pass"] for r in rs)
         rate = (passed/n*100) if n else float("nan")
         print(f"\n[{name}]  runs={n}  passed={passed}  success_rate={rate:.0f}%")
-    metrics = [("total_tokens","tokens"),("in_tokens","input tok"),
-               ("out_tokens","output tok"),("turns","turns"),("wall_s","wall s")]
+    metrics = [("io_tokens","io tok"),("billable_tokens","billable tok"),("cost_usd","cost $"),
+               ("turns","turns"),("wall_s","wall s")]
     print("\n--- successful runs only (median [IQR]) ---")
     for key,label in metrics:
-        s = [r[key] for r in arms["semantic"] if r["pass"]==1]
-        b = [r[key] for r in arms["baseline"] if r["pass"]==1]
+        s = [r[key] for r in arms["semantic"] if r["pass"]==1 and r.get("is_error")=="false"]
+        b = [r[key] for r in arms["baseline"] if r["pass"]==1 and r.get("is_error")=="false"]
         ms, mb = med(s), med(b)
         lo, hi = boot_ci(s, b)
         delta = (mb-ms)
-        pct = (delta/mb*100) if mb else float("nan")
+        pct = (delta/mb*100) if (mb and not math.isnan(mb)) else float("nan")
         s_iqr, b_iqr = iqr(s), iqr(b)
         print(f"{label:>10}: semantic {ms:>9.1f} [{s_iqr[0]:.0f},{s_iqr[1]:.0f}]  "
               f"baseline {mb:>9.1f} [{b_iqr[0]:.0f},{b_iqr[1]:.0f}]  "

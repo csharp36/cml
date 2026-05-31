@@ -14,7 +14,7 @@ if [[ "$arm" == "semantic" ]]; then
   if [[ "$tool" == "Grep" || "$tool" == "Glob" ]]; then
     decision="deny"; reason="search tool '$tool' forbidden in semantic arm"
   elif [[ "$tool" == "Bash" ]] && printf '%s' "$cmd" \
-        | grep -qE '(^|[;&|`]|[[:space:]])(grep|egrep|fgrep|rg|ag|ack|find)([[:space:]]|$)'; then
+        | grep -qE '(^|[;&|`(/\\]|[[:space:]])(grep|egrep|fgrep|rg|ag|ack|find|fd|locate)([[:space:]]|$)'; then
     decision="deny"; reason="shell search command forbidden in semantic arm"
   fi
 elif [[ "$arm" == "baseline" ]]; then
