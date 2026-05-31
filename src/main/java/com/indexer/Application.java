@@ -10,6 +10,7 @@ import com.indexer.db.*;
 import com.indexer.indexing.BranchCleanupTask;
 import com.indexer.scip.ScipDao;
 import com.indexer.scip.ScipPruneTask;
+import com.indexer.scip.ScipSessionReaperTask;
 import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
@@ -32,6 +33,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,6 +53,11 @@ public class Application {
     private TSParserPool parserPool;
 
     public static void main(String[] args) {
+        // CLI sub-command: split a large SCIP index into uploadable parts.
+        if (args.length > 0 && args[0].equals("scip-split")) {
+            com.indexer.scip.ScipSplitCli.main(Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         String configPath = args.length > 0 ? args[0] : System.getProperty("user.home") + "/.source-code-indexer/config.yaml";
         new Application().start(Path.of(configPath));
     }
@@ -152,9 +159,11 @@ public class Application {
             // 5e. Set up audit sink
             var auditSink = new com.indexer.audit.PostgresAuditSink(jdbi);
 
-            // 5f. Set up SCIP upload endpoint
+            // 5f. Set up SCIP upload endpoint (single-shot + multi-part sessions)
             var scipService = new com.indexer.scip.ScipService(repositoryDao, fileDao, jdbi);
-            var scipApi = new com.indexer.scip.ScipApi(authenticator, scipService, auditSink);
+            var scipSessionService = new com.indexer.scip.ScipSessionService(
+                    repositoryDao, fileDao, new com.indexer.scip.ScipSessionDao(jdbi), jdbi);
+            var scipApi = new com.indexer.scip.ScipApi(authenticator, scipService, scipSessionService, auditSink);
 
             // 6. Build Streamable HTTP transport
             final JwtValidator finalJwtValidator = jwtValidator;
@@ -277,6 +286,16 @@ public class Application {
                     TimeUnit.HOURS);
             log.info("SCIP prune task scheduled every {}h (grace={}d)",
                     config.branches().cleanupIntervalHours(), config.scip().pruneGraceDays());
+
+            // 8d. Schedule the SCIP upload-session reaper (GC abandoned multi-part uploads).
+            var scipSessionReaper = new ScipSessionReaperTask(
+                    new com.indexer.scip.ScipSessionDao(jdbi), config.scip().uploadSessionTtlHours());
+            scheduler.scheduleAtFixedRate(scipSessionReaper,
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().cleanupIntervalHours(),
+                    TimeUnit.HOURS);
+            log.info("SCIP upload-session reaper scheduled every {}h (sessionTTL={}h)",
+                    config.branches().cleanupIntervalHours(), config.scip().uploadSessionTtlHours());
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));

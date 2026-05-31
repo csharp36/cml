@@ -41,6 +41,7 @@ public class ScipDao {
                     SELECT upload_sha
                     FROM scip_symbols
                     WHERE repo_id = :repoId
+                      AND upload_sha NOT LIKE '\\_\\_staging\\_\\_:%'
                       AND upload_sha IS DISTINCT FROM
                           (SELECT last_indexed_sha FROM repositories WHERE id = :repoId)
                       AND NOT EXISTS (

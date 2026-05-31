@@ -1,10 +1,10 @@
 name: CI
 
-# Build + full test gate for pull requests. The project's `test` task discovers
-# every test (no tag exclusion), so `./gradlew build` compiles and runs the whole
-# suite — including the @Tag("integration")/@Tag("e2e") Testcontainers tests, which
-# spin up PostgreSQL via Docker. ubuntu-latest ships Docker, so no extra service
-# setup is needed.
+# Build + full test gate for pull requests. The `test` task excludes the
+# @Tag("integration")/@Tag("e2e") Testcontainers tests (so a local `./gradlew build`
+# stays fast and Docker-free); CI runs the full suite by invoking the dedicated
+# integrationTest and e2eTest tasks alongside build. Those spin up PostgreSQL via
+# Docker — ubuntu-latest ships Docker, so no extra service setup is needed.
 #
 # The HTTP-server tests construct a Javalin app whose static-file + SPA handlers
 # point at admin-ui/dist via Location.EXTERNAL, and Javalin validates that the
@@ -53,7 +53,8 @@ jobs:
           npm ci
           npm run build
 
-      # Compiles, runs the full test suite (unit + Testcontainers integration + e2e),
-      # and assembles. Testcontainers reaches the runner's Docker daemon automatically.
+      # Compiles + assembles + runs unit tests (build), then the Testcontainers
+      # integration and e2e suites explicitly (the unit `test` task excludes those tags).
+      # Testcontainers reaches the runner's Docker daemon automatically.
       - name: Build and test
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build integrationTest e2eTest --no-daemon

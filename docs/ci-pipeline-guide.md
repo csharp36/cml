@@ -140,6 +140,33 @@ If your build system already produces a `.scip` file (e.g., via a Gradle plugin)
   --api-key "$SCIP_API_KEY"
 ```
 
+## Any size — one unified flow
+
+The server caps a single upload request at 50 MB, and large repositories can produce much bigger
+SCIP indexes (a full index for a large Java monorepo can exceed 480 MB). **You do not need
+size-specific CI logic.** `scip-upload.sh` checks the file size and branches itself: files at or
+under the part cap upload single-shot; larger files are split at `Document` boundaries into valid
+sub-indexes and uploaded through the multi-part session API. The split parts stage invisibly and are
+promoted atomically on completion, so a failed run never leaves a partially-typed commit visible to
+queries.
+
+The one requirement for size-independence: **always make the splitter jar available** so the large
+path can fire when needed. Passing it is harmless for small files (the single-shot path never
+references it), so set it unconditionally:
+
+```bash
+./scripts/scip-upload.sh --scip-file build/index.scip \
+  --server https://indexer.internal:8080 \
+  --repo your-repo-name \
+  --api-key "$SCIP_API_KEY" \
+  --splitter-jar /opt/indexer/indexer.jar    # or set SCIP_SPLITTER_JAR
+```
+
+Build the jar with `./gradlew shadowJar` (→ `build/libs/indexer.jar`), download it as a pinned
+release asset, or use the indexer container image. cml's own `.github/workflows/scip-upload.yml`
+demonstrates this unified setup: it builds the jar with `shadowJar` and exports `SCIP_SPLITTER_JAR`,
+so the same upload step works whether the index is 5 MB or 500 MB.
+
 ## Troubleshooting
 
 | Error | Cause | Fix |

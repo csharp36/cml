@@ -106,9 +106,10 @@ public record IndexerConfig(
         }
     }
 
-    public record ScipConfig(int pruneGraceDays) {
+    public record ScipConfig(int pruneGraceDays, int uploadSessionTtlHours) {
         public ScipConfig {
             if (pruneGraceDays <= 0) pruneGraceDays = 7;
+            if (uploadSessionTtlHours <= 0) uploadSessionTtlHours = 24;
         }
     }
 
@@ -144,7 +145,7 @@ public record IndexerConfig(
         // admin can be null — admin API disabled
         if (branches == null) branches = new BranchConfig(true, 14, 90, 24);
         if (tags == null) tags = new TagConfig(true, "v*");
-        if (scip == null) scip = new ScipConfig(7);
+        if (scip == null) scip = new ScipConfig(7, 24);
         if (mcpAuth == null) mcpAuth = new McpAuthConfig(List.of(), null, null);
     }
 }

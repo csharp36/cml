@@ -56,12 +56,22 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/scip-java" version   # fail loudly here if the launcher is broken
 
+      # Build the runnable fat jar so scip-upload.sh can split large SCIP files.
+      # The script auto-detects size: files <= part cap upload single-shot (the jar is
+      # simply unused); larger files are split into valid sub-indexes and uploaded via the
+      # multi-part session API. Providing the jar unconditionally makes the upload step
+      # size-independent — the same command works whether the index is 5 MB or 500 MB.
+      - name: Build SCIP splitter jar
+        run: ./gradlew shadowJar   # -> build/libs/indexer.jar
+
       # scip-upload.sh auto-detects Java (build.gradle.kts present), runs
       # `scip-java index --output index.scip`, then POSTs to /api/scip/<repo>
       # with X-Git-SHA = HEAD. --fail-on-error makes a bad upload fail the job.
+      # SCIP_SPLITTER_JAR is honored automatically (equivalent to --splitter-jar).
       - name: Generate and upload SCIP
         run: ./scripts/scip-upload.sh --fail-on-error
         env:
+          SCIP_SPLITTER_JAR: ${{ github.workspace }}/build/libs/indexer.jar
           SCIP_SERVER: ${{ secrets.SCIP_SERVER }}
           SCIP_REPO: ${{ github.event.repository.name }}   # = "cml"
           SCIP_API_KEY: ${{ secrets.SCIP_API_KEY }}         # key with scipUpload: true (CI_UPLOAD_KEY)

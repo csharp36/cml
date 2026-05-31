@@ -2,6 +2,7 @@ plugins {
     java
     application
     id("com.google.protobuf") version "0.9.4"
+    id("com.gradleup.shadow") version "8.3.5"
 }
 
 group = "com.indexer"
@@ -73,7 +74,12 @@ application {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    // The unit `test` task (run by `build`) must exclude DB/container-backed tests so it
+    // stays fast and Docker-free. Those carry @Tag("integration") / @Tag("e2e") and run via
+    // the dedicated integrationTest / e2eTest tasks below.
+    useJUnitPlatform {
+        excludeTags("integration", "e2e")
+    }
 }
 
 tasks.register<Test>("integrationTest") {
@@ -92,4 +98,12 @@ protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:4.29.3"
     }
+}
+
+// Runnable fat jar: `java -jar build/libs/indexer.jar scip-split ...` (and the server).
+// The application plugin's plain jar has no Main-Class and no bundled deps, so it is NOT
+// runnable via `java -jar`; shadowJar bundles everything and sets Main-Class from `application`.
+tasks.shadowJar {
+    archiveFileName.set("indexer.jar")
+    mergeServiceFiles() // preserve SPI providers (logback, jdbi, flyway, etc.)
 }
