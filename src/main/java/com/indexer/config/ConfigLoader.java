@@ -185,9 +185,10 @@ public class ConfigLoader {
     }
 
     private IndexerConfig.ScipConfig parseScip(JsonNode node) {
-        if (node == null) return new IndexerConfig.ScipConfig(7);
+        if (node == null) return new IndexerConfig.ScipConfig(7, 24);
         int pruneGraceDays = node.has("pruneGraceDays") ? node.get("pruneGraceDays").asInt(7) : 7;
-        return new IndexerConfig.ScipConfig(pruneGraceDays);
+        int uploadSessionTtlHours = node.has("uploadSessionTtlHours") ? node.get("uploadSessionTtlHours").asInt(24) : 24;
+        return new IndexerConfig.ScipConfig(pruneGraceDays, uploadSessionTtlHours);
     }
 
     private IndexerConfig.McpAuthConfig parseMcpAuth(JsonNode node) {

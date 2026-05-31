@@ -10,6 +10,7 @@ import com.indexer.db.*;
 import com.indexer.indexing.BranchCleanupTask;
 import com.indexer.scip.ScipDao;
 import com.indexer.scip.ScipPruneTask;
+import com.indexer.scip.ScipSessionReaperTask;
 import com.indexer.indexing.FileIndexer;
 import com.indexer.indexing.IndexingPipeline;
 import com.indexer.indexing.SymbolExtractor;
@@ -285,6 +286,16 @@ public class Application {
                     TimeUnit.HOURS);
             log.info("SCIP prune task scheduled every {}h (grace={}d)",
                     config.branches().cleanupIntervalHours(), config.scip().pruneGraceDays());
+
+            // 8d. Schedule the SCIP upload-session reaper (GC abandoned multi-part uploads).
+            var scipSessionReaper = new ScipSessionReaperTask(
+                    new com.indexer.scip.ScipSessionDao(jdbi), config.scip().uploadSessionTtlHours());
+            scheduler.scheduleAtFixedRate(scipSessionReaper,
+                    config.branches().cleanupIntervalHours(),
+                    config.branches().cleanupIntervalHours(),
+                    TimeUnit.HOURS);
+            log.info("SCIP upload-session reaper scheduled every {}h (sessionTTL={}h)",
+                    config.branches().cleanupIntervalHours(), config.scip().uploadSessionTtlHours());
 
             // Register shutdown hook
             Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
