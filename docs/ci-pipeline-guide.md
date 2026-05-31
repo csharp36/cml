@@ -140,6 +140,30 @@ If your build system already produces a `.scip` file (e.g., via a Gradle plugin)
   --api-key "$SCIP_API_KEY"
 ```
 
+## Large SCIP Files (> 50 MB)
+
+The server caps a single upload request at 50 MB. Large repositories can produce much bigger SCIP
+indexes (a full index for a large Java monorepo can exceed 480 MB). For these, the upload script
+splits the index at `Document` boundaries into valid sub-indexes and uploads them through the
+multi-part session API automatically — you just need to make the indexer jar available so the script
+can run its `scip-split` sub-command.
+
+Make the jar available in your CI image (download it as a pinned release asset, or use the indexer
+container image), then pass `--splitter-jar`:
+
+```bash
+./scripts/scip-upload.sh --scip-file build/index.scip \
+  --server https://indexer.internal:8080 \
+  --repo your-repo-name \
+  --api-key "$SCIP_API_KEY" \
+  --splitter-jar /opt/indexer/indexer.jar
+```
+
+You can also set `SCIP_SPLITTER_JAR` in the environment instead of the flag. Files at or under the
+cap upload single-shot exactly as before, so this flag is harmless to set unconditionally. The split
+parts stage invisibly and are promoted atomically on completion, so a failed CI run never leaves a
+partially-typed commit visible to queries.
+
 ## Troubleshooting
 
 | Error | Cause | Fix |

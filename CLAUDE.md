@@ -334,6 +334,7 @@ tags:
 
 scip:
   pruneGraceDays: 7         # SCIP uploads within this window are kept even if the ref is no longer live
+  uploadSessionTtlHours: 24 # Abandoned multi-part upload sessions are reaped after this many hours
 ```
 
 ### Any ref: branches, tags, and commit SHAs
@@ -451,6 +452,30 @@ Body: raw SCIP protobuf bytes
 
 Uploads are retained **per `X-Git-SHA`** — not replace-all. Re-uploading the same SHA replaces only that SHA's data; different SHAs coexist, so a tagged release keeps its own type-resolution layer independent of main. CI uploads SCIP on both branch pushes and tag pushes (see `.github/workflows/scip-upload.yml`).
 
+### Large uploads — multi-part session API
+
+SCIP indexes larger than the 50 MB request cap (e.g. a 484 MB index for a large monorepo) are
+uploaded in parts. The CLI wrapper (`scripts/scip-upload.sh`) does this automatically; the
+underlying endpoints are:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/api/scip/{repo}/uploads` | Open a session (`X-Git-SHA`, optional `X-Scip-Parts`). Returns `{uploadId, stagingKey}`. |
+| `POST` | `/api/scip/{repo}/uploads/{id}/parts/{n}` | Upload one valid sub-index part (≤50 MB). Idempotent per part number. |
+| `POST` | `/api/scip/{repo}/uploads/{id}/complete` | Atomically promote staged data to the SHA. |
+| `DELETE`| `/api/scip/{repo}/uploads/{id}` | Abort a session, discarding staged data. |
+
+Parts are produced by splitting the index at SCIP `Document` boundaries — each part is itself a
+fully-valid SCIP `Index` (protobuf concatenation semantics), so the server parses each part with the
+same code path as a single-shot upload and never holds the whole index in memory. Staged parts are
+written under a synthetic `__staging__:<uploadId>` `upload_sha` and are invisible to queries until
+`complete` atomically promotes them to the real SHA; an interrupted session leaves no visible data
+and is garbage-collected after `scip.uploadSessionTtlHours` (default 24 h).
+
+Splitting is done by the `scip-split` sub-command of the indexer jar:
+
+    java -jar indexer.jar scip-split index.scip --max-bytes 47185920 --out parts/
+
 A periodic retention policy (`ScipPruneTask`) keeps SCIP for: the current main SHA, all live indexed refs (branches/tags tracked in `branch_index`), and any upload within a configurable grace window (default 7 days, controlled by `scip.pruneGraceDays`). Older SHA rows are pruned automatically.
 
 `get_index_health` reports SCIP staleness per repo (existence-based, checked against main's `last_indexed_sha` — this tool is repo-global and not ref-aware): `fresh` (SCIP exists for the main indexed SHA), `stale` (main has advanced past the SCIP SHAs on hand), or `unavailable` (no SCIP upload for this repo yet).
@@ -470,6 +495,17 @@ A portable Bash script for generating and uploading SCIP data from CI pipelines.
 ```
 
 Supports Java (`scip-java`), Python (`scip-python`), and TypeScript (`scip-typescript`) auto-detection. Use `--scip-file` for other languages.
+
+For indexes larger than the 50 MB server cap, pass the indexer jar so the script can split:
+
+```bash
+./scripts/scip-upload.sh --server http://indexer:8080 --repo my-repo --api-key "$KEY" \
+    --scip-file build/index.scip --splitter-jar /opt/indexer/indexer.jar
+```
+
+Flags: `--splitter-jar PATH` (or `SCIP_SPLITTER_JAR`) and `--max-part-bytes N` (or
+`SCIP_MAX_PART_BYTES`, default 47185920 = 45 MiB). Files at or under the cap upload single-shot
+exactly as before; larger files are split at `Document` boundaries and uploaded via the session API.
 
 See `docs/ci-pipeline-guide.md` for GitHub Actions, GitLab CI, and generic CI examples.
 
