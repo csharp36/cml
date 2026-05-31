@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -51,6 +52,11 @@ public class Application {
     private TSParserPool parserPool;
 
     public static void main(String[] args) {
+        // CLI sub-command: split a large SCIP index into uploadable parts.
+        if (args.length > 0 && args[0].equals("scip-split")) {
+            com.indexer.scip.ScipSplitCli.main(Arrays.copyOfRange(args, 1, args.length));
+            return;
+        }
         String configPath = args.length > 0 ? args[0] : System.getProperty("user.home") + "/.source-code-indexer/config.yaml";
         new Application().start(Path.of(configPath));
     }
