@@ -64,66 +64,11 @@ public class ScipService {
         // Store in transaction: delete old, insert new, update repo
         jdbi.useTransaction(handle -> {
             // Delete only this SHA's prior rows — other SHAs are retained
-            handle.createUpdate("DELETE FROM scip_relationships WHERE repo_id = :repoId AND upload_sha = :sha")
-                    .bind("repoId", repo.id())
-                    .bind("sha", gitSha)
-                    .execute();
-            handle.createUpdate("DELETE FROM scip_symbols WHERE repo_id = :repoId AND upload_sha = :sha")
-                    .bind("repoId", repo.id())
-                    .bind("sha", gitSha)
-                    .execute();
+            ScipWriter.deleteForSha(handle, repo.id(), gitSha);
+            ScipWriter.insert(handle, repo.id(), gitSha, parseResult);
 
-            // Bulk insert symbols
-            var symbolBatch = handle.prepareBatch("""
-                    INSERT INTO scip_symbols (repo_id, scip_symbol, display_name, kind, documentation,
-                                              file_path, start_line, end_line, upload_sha, uploaded_at)
-                    VALUES (:repoId, :scipSymbol, :displayName, :kind, :documentation,
-                            :filePath, :startLine, :endLine, :uploadSha, NOW())
-                    ON CONFLICT (repo_id, upload_sha, scip_symbol) DO UPDATE SET
-                        display_name = EXCLUDED.display_name, kind = EXCLUDED.kind,
-                        documentation = EXCLUDED.documentation, file_path = EXCLUDED.file_path,
-                        start_line = EXCLUDED.start_line, end_line = EXCLUDED.end_line,
-                        uploaded_at = NOW()
-                    """);
-            for (var sym : parseResult.symbols()) {
-                symbolBatch
-                        .bind("repoId", repo.id())
-                        .bind("scipSymbol", sym.scipSymbol())
-                        .bind("displayName", sym.displayName())
-                        .bind("kind", sym.kind())
-                        .bind("documentation", sym.documentation())
-                        .bind("filePath", sym.filePath())
-                        .bind("startLine", sym.startLine())
-                        .bind("endLine", sym.endLine())
-                        .bind("uploadSha", gitSha)
-                        .add();
-            }
-            if (!parseResult.symbols().isEmpty()) {
-                symbolBatch.execute();
-            }
-
-            // Bulk insert relationships
-            var relBatch = handle.prepareBatch("""
-                    INSERT INTO scip_relationships (repo_id, from_symbol, to_symbol, kind, file_path, line, upload_sha)
-                    VALUES (:repoId, :fromSymbol, :toSymbol, :kind, :filePath, :line, :uploadSha)
-                    """);
-            for (var rel : parseResult.relationships()) {
-                relBatch
-                        .bind("repoId", repo.id())
-                        .bind("fromSymbol", rel.fromSymbol())
-                        .bind("toSymbol", rel.toSymbol())
-                        .bind("kind", rel.kind())
-                        .bind("filePath", rel.filePath())
-                        .bind("line", rel.line())
-                        .bind("uploadSha", gitSha)
-                        .add();
-            }
-            if (!parseResult.relationships().isEmpty()) {
-                relBatch.execute();
-            }
-
-            // Update repo SCIP tracking
-            // scip_sha/scip_uploaded_at are informational only ("most recent upload"); SCIP freshness is computed existence-based, not from this column.
+            // Update repo SCIP tracking. scip_sha/scip_uploaded_at are informational only
+            // ("most recent upload"); SCIP freshness is computed existence-based, not from this column.
             handle.createUpdate(
                     "UPDATE repositories SET scip_sha = :sha, scip_uploaded_at = NOW() WHERE id = :id")
                     .bind("sha", gitSha)
