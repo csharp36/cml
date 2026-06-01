@@ -7,6 +7,9 @@ INSTANCES="$BENCH/discovery/instances.jsonl"
 R="$BENCH/results"; mkdir -p "$R"
 CSV="$R/discovery-results.csv"
 
+# Discovery re-indexes the server's hazelcast at the 2020-06 median base (close to all
+# sampled instance bases so overlays stay small). preflight reads this.
+export INDEX_BASE_SHA="${INDEX_BASE_SHA:-8b64f0d16dab}"
 bash "$BENCH/preflight.sh"
 [[ -s "$INSTANCES" ]] || { echo "no instances — run bench/discovery/sample-prs.sh first"; exit 1; }
 
