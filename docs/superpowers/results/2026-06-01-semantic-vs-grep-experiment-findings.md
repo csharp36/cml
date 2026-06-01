@@ -72,10 +72,7 @@ interceptor inputs."** A map interceptor must not be able to mutate the value th
 
 **Two arms, identical except for discovery tooling:**
 
-| Arm | Code discovery | The index (MCP) |
-|---|---|---|
-| **semantic** | `grep`/`find`/`glob` **blocked** | available (17 MCP tools over the live index) |
-| **baseline** | standard shell discovery | **blocked** |
+![Two arms, identical except for discovery tooling: the semantic arm has grep/find/glob blocked and the index available; the baseline has standard shell discovery and the index blocked.](table-1-two-arms.jpeg)
 
 **Harness.** Each run: create a fresh git worktree at base, apply the test patch,
 confirm the oracle is RED, then launch headless Claude Code (`claude -p`) with the
@@ -107,10 +104,7 @@ you code") into what was supposed to be a stock agent. To be clear, these are go
 working exactly as designed; they simply have no business inside a benchmark's control
 set. The effect was not subtle:
 
-| (polluted env) | turns | wall | cost |
-|---|---|---|---|
-| semantic | 12 | 12.5 min | $7.55 |
-| baseline | **59** | 18.6 min | $4.33 |
+![Polluted environment: semantic ran 12 turns / 12.5 min / $7.55; baseline ran 59 turns / 18.6 min / $4.33 — numbers driven by leaked plugins, not the task.](table-2-polluted-env.jpeg)
 
 The baseline's 59 turns weren't "the task" — they were a plugin orchestrating subagents.
 The semantic arm's *12* turns were even more misleading: its plugin hid most of the real
@@ -141,14 +135,7 @@ applied to both arms via `MAVEN_ARGS`).
 
 First hermetic, isolated run (n=1 per arm). Both arms **passed**.
 
-| metric | semantic | baseline | ratio |
-|---|---|---|---|
-| **cost** | **$15.12** | **$1.13** | baseline 13× cheaper |
-| turns | 116 | 19 | 6× fewer |
-| wall-clock | 63 min | 8 min | 8× faster |
-| billable tokens | 15.2M | 1.1M | 14× fewer |
-| maven test cycles | 15 | 5 | — |
-| code edits | 18 | **1** | — |
+![Result, take 1: the semantic arm cost $15.12 vs the baseline's $1.13 (baseline 13× cheaper), with 116 vs 19 turns, 63 vs 8 min, and 15.2M vs 1.1M billable tokens. Both arms passed.](table-3-result-take-1.jpeg)
 
 This is the opposite of the hypothesis, and by a wide margin. The disciplined move is
 **not** to publish "semantic indexing makes Claude 13× worse." It's to ask *why* — and
@@ -197,13 +184,7 @@ We made two changes and re-ran:
   doesn't.
 - **Deterministic tests** (3b), so a flake grades and reads as a pass.
 
-| metric | semantic v1 | semantic v2 | baseline v2 |
-|---|---|---|---|
-| pass | ✅ | ✅ | ✅ |
-| cost | $15.12 | **$5.87** (−61%) | $0.93 |
-| turns | 116 | 82 | 21 |
-| wall | 63 min | 53 min | 6.3 min |
-| billable tokens | 15.2M | 6.4M | 0.9M |
+![Result, take 2: removing the confounds cut the semantic arm from $15.12 (v1) to $5.87 (v2, −61%); the baseline cost $0.93. All three arms passed; turns 116/82/21, wall 63/53/6.3 min, tokens 15.2M/6.4M/0.9M.](table-4-result-take-2.jpeg)
 
 Removing the confounds cut the semantic arm's cost **61%** and the gap from **13× to
 6.3×**. But the baseline still won decisively.
