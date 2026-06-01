@@ -22,7 +22,6 @@ def test_grade_files_normalizes_paths():
     p, r, f1 = grade.grade_files(["./hazelcast/x/Foo.java"], ["hazelcast/x/Foo.java"])
     assert f1 == 1.0
 
-# append to bench/discovery/test_grade.py
 import json
 
 def test_judge_uses_injected_fn():

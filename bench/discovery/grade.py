@@ -27,7 +27,6 @@ def grade_files(answer_files, truth_files):
 def grade_symbols(answer_syms, truth_syms):
     return prf({norm_sym(x) for x in answer_syms}, {norm_sym(x) for x in truth_syms})
 
-# append to bench/discovery/grade.py
 JUDGE_MODEL = "claude-sonnet-4-6"  # pinned for reproducibility
 _JUDGE_INSTR = (
     "You are grading a code-navigation answer. A developer was asked WHERE in the codebase "
@@ -40,13 +39,18 @@ _JUDGE_INSTR = (
 
 def _claude_judge(task, answer, gold):
     prompt = _JUDGE_INSTR.format(task=task, gold=json.dumps(gold), answer=json.dumps(answer))
-    out = subprocess.run(
-        ["claude", "-p", prompt, "--output-format", "json", "--model", JUDGE_MODEL,
-         "--setting-sources", "project,local", "--disable-slash-commands", "--strict-mcp-config"],
-        capture_output=True, text=True)
-    data = json.loads(out.stdout)
-    res = json.loads(data["result"])  # the model returns a JSON string
-    return {"score": float(res["score"]), "rationale": str(res["rationale"])}
+    try:
+        out = subprocess.run(
+            ["claude", "-p", prompt, "--output-format", "json", "--model", JUDGE_MODEL,
+             "--setting-sources", "project,local", "--disable-slash-commands", "--strict-mcp-config"],
+            capture_output=True, text=True)
+        if out.returncode != 0:
+            return {"score": 0.0, "rationale": f"judge error: claude exit {out.returncode}"}
+        data = json.loads(out.stdout)
+        res = json.loads(data["result"])  # the model returns a JSON string
+        return {"score": float(res["score"]), "rationale": str(res["rationale"])}
+    except (ValueError, KeyError, TypeError) as e:
+        return {"score": 0.0, "rationale": f"judge error: {e}"}
 
 def judge(task, answer, gold, judge_fn=None):
     return (judge_fn or _claude_judge)(task, answer, gold)
