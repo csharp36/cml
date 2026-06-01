@@ -5,12 +5,20 @@ take 2 (post-fix). PR #4317, hazelcast."""
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+
+# Medium editorial palette: charcoal text, light grid, white bg.
+INK = "#242424"; GRID = "#E6E6E6"
+plt.rcParams.update({
+    "text.color": INK, "axes.labelcolor": INK,
+    "xtick.color": INK, "ytick.color": INK,
+    "axes.edgecolor": "#BBBBBB",
+    "font.family": "DejaVu Sans",
+})
 
 # (label, cost_usd, turns, wall_min, color)
-SEMANTIC = "#2A7FB8"   # blue  = semantic / index arm
-SEMANTIC2 = "#7FC3E8"  # light blue = semantic after fixes
-BASELINE = "#E08A2B"   # orange = grep/find baseline
+SEMANTIC = "#1A6E3C"   # Medium green (dark) = semantic / index arm
+SEMANTIC2 = "#74B98C"  # Medium green (light) = semantic after fixes
+BASELINE = "#C2693C"   # muted terracotta = grep/find baseline
 
 bars = [
     ("Semantic\n(take 1)", 15.12, 116, 63.1, SEMANTIC),
@@ -41,8 +49,7 @@ for ax, (title, vals, fmt) in zip(axes, metrics):
                 fmt(v), ha="center", va="bottom", fontsize=9.5, fontweight="bold")
     ax.spines[["top", "right"]].set_visible(False)
     ax.tick_params(axis="y", labelsize=8)
-    ax.grid(axis="y", color="#dddddd", linewidth=0.7)
-    ax.set_axisbisect = None
+    ax.grid(axis="y", color=GRID, linewidth=0.8)
 
 # ratio annotations on the cost panel (the headline)
 cost_ax = axes[0]
@@ -59,6 +66,6 @@ fig.text(0.5, 0.005,
          ha="center", fontsize=8, color="#666")
 
 fig.tight_layout(rect=[0, 0.03, 1, 0.95])
-out = "bench/results/figure-cost-turns-wall.png"
+out = "docs/superpowers/results/figure-cost-turns-wall.png"  # tracked, next to the writeup
 fig.savefig(out, dpi=160, bbox_inches="tight", facecolor="white")
 print("wrote", out)

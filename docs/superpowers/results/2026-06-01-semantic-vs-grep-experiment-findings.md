@@ -1,5 +1,14 @@
 # Does a semantic code index make Claude Code a better engineer? A controlled experiment
 
+![Hero image — placeholder. Same large codebase, two ways of finding code: a flashlight searching in the dark (grep) vs. a glowing connected map with one node lit (the index).](hero-map-vs-flashlight.png)
+
+<!-- HERO IMAGE — generate via DALL·E / Midjourney (16:9), then replace hero-map-vs-flashlight.png:
+"Split-screen digital illustration, dark technical aesthetic. Left half: a vast dark grid of
+small code-file rectangles, a single narrow flashlight beam illuminating a few at random, feeling
+of searching in the dark. Right half: the same grid as a glowing interconnected network graph, one
+node highlighted bright, clean lines connecting related nodes, feeling of instant knowing. Minimal,
+editorial, high contrast, no text. 16:9." -->
+
 *Findings writeup — 2026-06-01. Source material for a Medium article. Single-task,
 small-n; every number below is reproducible from `bench/` on the
 `design/semantic-vs-grep-benchmark` branch.*
@@ -198,6 +207,13 @@ We made two changes and re-ran:
 
 Removing the confounds cut the semantic arm's cost **61%** and the gap from **13× to
 6.3×**. But the baseline still won decisively.
+
+![Cost, agent turns, and wall-clock per successful run: semantic take 1, semantic take 2 (confounds fixed), and the grep/find baseline.](figure-cost-turns-wall.png)
+
+*Figure 1 — Cost, turns, and wall-clock per successful run across the three measured
+configurations. Fixing the two confounds (take 1 → take 2) cut the index arm's cost 61%,
+narrowing the gap from 13× to 6.3×; the grep/find baseline still wins on every axis.
+Both arms passed the PR's tests. n = 1 per arm, single task — direction only.*
 
 ## 7. The real finding: we measured the wrong phase
 
