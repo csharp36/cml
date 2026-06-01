@@ -22,8 +22,14 @@ git -C "$WT" apply "$BENCH/task/test_patch.diff" \
 if "$BENCH/task/oracle.sh" "$WT" "$TESTS" >/dev/null 2>&1; then
   echo "[$ARM/$RUN_ID] ABORT: oracle GREEN before run (bad worktree)"; exit 3; fi
 
+# Isolation from the operator's personal Claude env so results are hermetic +
+# reproducible (see bench/README): --setting-sources project,local drops the
+# global ~/.claude/settings.json SessionStart hooks (gsd, etc.); the worktree has
+# no project/local settings, so only the arm's --settings file loads. OAuth/keychain
+# auth is preserved (we deliberately do NOT use --bare, which forces ANTHROPIC_API_KEY).
 ARGS=( -p "$(cat "$BENCH/task/task-prompt.md")" --output-format json
        --permission-mode default --settings "$BENCH/config/settings.${ARM}.json"
+       --setting-sources project,local --disable-slash-commands
        --strict-mcp-config --add-dir "$WT" )
 [[ "$ARM" == "semantic" ]] && ARGS+=( --mcp-config "$BENCH/config/mcp.semantic.json" )
 
