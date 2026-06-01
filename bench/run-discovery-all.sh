@@ -43,7 +43,8 @@ guard() {
   echo "   [budget] spent \$$s / cap \$$BUDGET"
 }
 
-run() { guard; bash "$BENCH/run-discovery-one.sh" "$1" "$2"; }
+# one bad instance must not abort the whole unattended batch (set -e)
+run() { guard; bash "$BENCH/run-discovery-one.sh" "$1" "$2" || echo "  WARN: run $1/$2 failed (exit $?)"; }
 
 echo "== smoke (first instance, both arms) =="
 for arm in semantic baseline; do run "$arm" "$first"; done
