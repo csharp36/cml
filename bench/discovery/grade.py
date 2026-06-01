@@ -33,7 +33,7 @@ _JUDGE_INSTR = (
     "to implement a task; they named files and symbols. Compare their answer to the gold "
     "change surface. Award credit for semantically correct locations even if phrased "
     "differently (e.g. the enclosing class instead of the exact method, or a valid alternative "
-    "site). Respond with ONLY compact JSON: {\"score\": <0.0-1.0>, \"rationale\": \"<one sentence>\"}.\n\n"
+    "site). Respond with ONLY compact JSON: {{\"score\": <0.0-1.0>, \"rationale\": \"<one sentence>\"}}.\n\n"
     "TASK:\n{task}\n\nGOLD SURFACE:\n{gold}\n\nDEVELOPER ANSWER:\n{answer}\n"
 )
 
@@ -53,7 +53,11 @@ def _claude_judge(task, answer, gold):
         return {"score": 0.0, "rationale": f"judge error: {e}"}
 
 def judge(task, answer, gold, judge_fn=None):
-    return (judge_fn or _claude_judge)(task, answer, gold)
+    # The judge is best-effort: a crash here must never discard the deterministic F1 scores.
+    try:
+        return (judge_fn or _claude_judge)(task, answer, gold)
+    except Exception as e:  # noqa: BLE001 - intentional catch-all around the optional judge
+        return {"score": 0.0, "rationale": f"judge error: {e}"}
 
 def _load(path):
     try:

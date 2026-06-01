@@ -18,10 +18,16 @@ inst=$(grep -F "\"id\": \"$IID\"" "$INSTANCES" | head -1)
 BASE=$(printf '%s' "$inst" | python3 -c 'import sys,json;print(json.load(sys.stdin)["base_sha"])')
 TASK=$(printf '%s' "$inst" | python3 -c 'import sys,json;print(json.load(sys.stdin)["task"])')
 
-cleanup() { git -C "$HZ" worktree remove --force "$WT" 2>/dev/null || true; }
+# Extract the source tree at BASE with NO .git — a git worktree shares the clone's full
+# history, which lets the agent `git log --all` forward to the fixing merge and read the
+# answer key (git diff <merge>^1 <merge> == the ground truth). An archive export has no
+# history, so the agent must genuinely discover. Baseline greps the files; the semantic
+# arm's MCP queries hit the server's own clone, so neither arm needs local .git.
+cleanup() { rm -rf "$WT" 2>/dev/null || true; }
 trap cleanup EXIT
-git -C "$HZ" worktree add --force --detach "$WT" "$BASE" >/dev/null 2>&1 \
-  || { echo "[$ARM/$IID] ABORT: worktree add failed (base $BASE)"; exit 4; }
+rm -rf "$WT"; mkdir -p "$WT"
+git -C "$HZ" archive "$BASE" | tar -x -C "$WT" 2>/dev/null \
+  || { echo "[$ARM/$IID] ABORT: archive extract failed (base $BASE)"; exit 4; }
 
 # Build the prompt from the template (substitute task / branch hint / worktree).
 if [[ "$ARM" == "semantic" ]]; then
@@ -48,10 +54,15 @@ START=$(python3 -c 'import time;print(time.time())')
 END=$(python3 -c 'import time;print(time.time())')
 WALL=$(python3 -c "print(f'{$END-$START:.2f}')")
 
-# Grade the answer the agent wrote into the worktree.
+# Grade the answer the agent wrote into the workspace. Preserve ANSWER.json BEFORE cleanup
+# removes $WT, so a zero score can be diagnosed (was it missing, malformed, or just wrong?).
 ANSWER="$WT/ANSWER.json"
+SAVED_ANSWER="$R/disc-answer-${ARM}-${IID}.json"
+if cp "$ANSWER" "$SAVED_ANSWER" 2>/dev/null; then :; else
+  echo "[$ARM/$IID] WARN: no ANSWER.json in workspace" >&2; : > "$SAVED_ANSWER"; fi
 printf '%s' "$inst" > "$R/disc-instance-${ARM}-${IID}.json"
-SCORE=$(python3 "$BENCH/discovery/grade.py" "$ANSWER" "$R/disc-instance-${ARM}-${IID}.json" 2>/dev/null \
+SCORE=$(python3 "$BENCH/discovery/grade.py" "$SAVED_ANSWER" "$R/disc-instance-${ARM}-${IID}.json" \
+        2>"$R/disc-grade-${ARM}-${IID}.log" \
         || echo '{"answered":0,"file_f1":0,"symbol_f1":0,"judge_score":0}')
 get() { printf '%s' "$SCORE" | python3 -c "import sys,json;print(json.load(sys.stdin).get('$1',0))"; }
 ANSWERED=$(get answered); FF1=$(get file_f1); SF1=$(get symbol_f1); JS=$(get judge_score)

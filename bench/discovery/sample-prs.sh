@@ -28,19 +28,23 @@ git -C "$REPO" log --merges --since="$SINCE" --pretty='%H %P' "$BRANCH" 2>/dev/n
       truth=$(python3 "$HERE/extract_truth.py" "$REPO" "$base" "$merge")
       tf=$(printf '%s' "$truth" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["files"]))')
       (( tf >= 2 )) || continue
-      # sanitize: drop explicit source paths / FQNs from the task text (answer-leak guard)
-      task=$(printf '%s\n%s' "$subj" "$body" \
-             | sed -E 's@[A-Za-z0-9_/.-]+/src/main/[A-Za-z0-9_/.]+\.java@<a source file>@g' \
-             | sed -E 's/\b([a-z]+\.)+[A-Z][A-Za-z0-9_]+\b/<a class>/g')
-      python3 - "$merge" "$base" "$subj" "$task" "$truth" >> "$OUT" <<'PY'
+      # sanitize the task via sanitize_task.sanitize (strips merge/PR#/branch + paths/FQNs,
+      # answer-leak guard). Emits nothing + exits 1 when no usable task remains -> skip instance.
+      if PYTHONPATH="$HERE" python3 - "$merge" "$base" "$subj" "$body" "$truth" >> "$OUT" <<'PY'
 import sys, json
-merge, base, subj, task, truth = sys.argv[1:6]
+import sanitize_task
+merge, base, subj, body, truth = sys.argv[1:6]
+task = sanitize_task.sanitize(subj + "\n" + body)
+if not task:
+    sys.exit(1)  # pure merge-noise / no description -> skip
 t = json.loads(truth)
 print(json.dumps({"id": merge[:12], "merge_sha": merge, "base_sha": base,
-                  "title": subj, "task": task.strip(),
+                  "title": subj, "task": task,
                   "truth_files": t["files"], "truth_symbols": t["symbols"]}))
 PY
-      count=$((count+1))
-      [[ "$count" -ge "$MAX" ]] && break
+      then
+        count=$((count+1))
+        [[ "$count" -ge "$MAX" ]] && break
+      fi
     done
 echo "wrote $(wc -l < "$OUT") instances to $OUT"
