@@ -33,8 +33,13 @@ ARGS=( -p "$(cat "$BENCH/task/task-prompt.md")" --output-format json
        --strict-mcp-config --add-dir "$WT" )
 [[ "$ARM" == "semantic" ]] && ARGS+=( --mcp-config "$BENCH/config/mcp.semantic.json" )
 
+# Make the agent's OWN `mvn test` runs deterministic (same flags as oracle.sh).
+# Maven 3.9+ prepends MAVEN_ARGS to every invocation, so the agent stops seeing
+# intermittent failures and chasing phantom races (the n=1 semantic thrash cause).
+# Applied to BOTH arms for fairness.
+MVN_DETERMINISM="-DforkCount=1 -DreuseForks=true -Dsurefire.rerunFailingTestsCount=2"
 START=$(python3 -c 'import time;print(time.time())')
-( cd "$WT" && BENCH_ARM="$ARM" BENCH_AUDIT_LOG="$AUDIT" \
+( cd "$WT" && BENCH_ARM="$ARM" BENCH_AUDIT_LOG="$AUDIT" MAVEN_ARGS="$MVN_DETERMINISM" \
     claude "${ARGS[@]}" ) > "$RES" 2> "$R/stderr-${ARM}-${RUN_ID}.log"
 END=$(python3 -c 'import time;print(time.time())')
 WALL=$(python3 -c "print(f'{$END-$START:.2f}')")

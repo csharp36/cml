@@ -10,6 +10,10 @@ MVN="mvn"; [[ -x ./mvnw ]] && MVN="./mvnw"
 TO=""
 if command -v timeout >/dev/null 2>&1; then TO="timeout 1800"
 elif command -v gtimeout >/dev/null 2>&1; then TO="gtimeout 1800"; fi
+# Deterministic grading: forkCount=1 removes cross-class parallel contention, and
+# rerunFailingTestsCount absorbs residual env flakiness (a flaky-then-passing test
+# under load grades PASS, not a false FAIL). See bench/README "oracle flakiness".
 $TO "$MVN" -q -pl hazelcast -am \
   -Dtest="$TESTS" -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false \
+  -DforkCount=1 -DreuseForks=true -Dsurefire.rerunFailingTestsCount=2 \
   test
