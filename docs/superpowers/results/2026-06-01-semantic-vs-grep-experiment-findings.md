@@ -11,7 +11,13 @@ small-n; every number below is reproducible from `bench/` on the
 We built a PostgreSQL-backed semantic code index (exposed to Claude Code as MCP
 tools) and asked a simple question: **does it make Claude implement a real feature
 faster and cheaper than plain `grep`/`find`?** We ran a head-to-head, SWE-bench-style
-experiment on a real Hazelcast pull request.
+experiment on a real pull request in [**Hazelcast**](https://github.com/hazelcast/hazelcast)
+— a mature, open-source Java distributed-computing platform of **~2.0M lines across
+~11,200 Java files, 40 Maven modules, and ~9,000 classes.** We chose it deliberately:
+it's large enough that "which file do I touch?" is a genuine question (not something you
+hold in your head), it's the kind of enterprise JVM codebase this index is built for, and
+as active open source it offers real merged PRs to use as neutral ground truth. (For
+scale, our index parsed 12,065 files and 165,162 symbols from it.)
 
 The first valid result was the opposite of our hypothesis — the semantic arm cost
 **13× more** than the grep baseline. Instead of publishing that, we treated it as a
@@ -82,9 +88,15 @@ to *any* agent benchmark.
 ### 3a. The benchmark must be hermetic
 
 Headless Claude Code inherits the **operator's personal environment** — globally
-installed skills/plugins and `SessionStart` hooks. Our first runs silently imported a
-suite of workflow plugins (multi-step "dispatch a subagent," "write tests first," etc.)
-into *both* arms. The effect was not subtle:
+installed skills/plugins and `SessionStart` hooks. Our laptop happened to have
+**Superpowers** (Anthropic's official plugin suite, which mandates test-driven
+development, brainstorming, and subagent-driven workflows) and a second workflow
+framework (GSD) installed. Both fired
+their `SessionStart` hooks and exposed their skills to *both* arms — silently injecting
+a whole working methodology ("dispatch a subagent," "write the test first," "plan before
+you code") into what was supposed to be a stock agent. To be clear, these are good tools
+working exactly as designed; they simply have no business inside a benchmark's control
+set. The effect was not subtle:
 
 | (polluted env) | turns | wall | cost |
 |---|---|---|---|
