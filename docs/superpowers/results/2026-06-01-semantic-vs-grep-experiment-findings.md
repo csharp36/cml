@@ -8,9 +8,9 @@ small-n; every number below is reproducible from `bench/` on the
 
 ## TL;DR
 
-We built a PostgreSQL-backed semantic code index (exposed to Claude Code as MCP
-tools) and asked a simple question: **does it make Claude implement a real feature
-faster and cheaper than plain `grep`/`find`?** We ran a head-to-head, SWE-bench-style
+We built a [PostgreSQL-backed semantic code index](https://github.com/csharp36/cml)
+(exposed to Claude Code as MCP tools) and asked a simple question: **does it make Claude
+implement a real feature faster and cheaper than plain `grep`/`find`?** We ran a head-to-head, SWE-bench-style
 experiment on a real pull request in [**Hazelcast**](https://github.com/hazelcast/hazelcast)
 — a mature, open-source Java distributed-computing platform of **~2.0M lines across
 ~11,200 Java files, 40 Maven modules, and ~9,000 classes.** We chose it deliberately:
