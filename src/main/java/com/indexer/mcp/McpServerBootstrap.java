@@ -140,15 +140,20 @@ public class McpServerBootstrap {
     private McpSchema.Tool findImplementationsTool() {
         var schema = new McpSchema.JsonSchema("object",
                 Map.of(
-                        "type_name", Map.of("type", "string", "description", "Name of the interface or base class"),
-                        "repo",      Map.of("type", "string", "description", "Optional repository name filter"),
-                        "branch",    Map.of("type", "string", "description", "Branch name (defaults to main)")
+                        "type_name",  Map.of("type", "string", "description", "Name of the interface or base class"),
+                        "repo",       Map.of("type", "string", "description", "Optional repository name filter"),
+                        "branch",     Map.of("type", "string", "description", "Branch name (defaults to main)"),
+                        "transitive", Map.of("type", "boolean", "description",
+                                "When true, walk the implements/extends graph to its closure so indirect implementers "
+                                + "(subclasses of an implementer, implementers of a sub-interface) are included. "
+                                + "Default false (direct 'implements' edges only).", "default", false)
                 ),
                 List.of("type_name"),
                 false, null, null);
         return McpSchema.Tool.builder()
                 .name("find_implementations")
-                .description("Find all classes that implement a given interface or extend a given class.")
+                .description("Find all classes that implement a given interface or extend a given class. "
+                        + "Pass transitive=true to include indirect implementers reached through inheritance chains.")
                 .inputSchema(schema)
                 .build();
     }
@@ -432,7 +437,7 @@ public class McpServerBootstrap {
         return queryExecutor.executeQuery(caller, repo, "find_implementations", args,
                 () -> queryExecutor.findImplementations(
                         stringArg(args, "type_name"), repo,
-                        stringArg(args, "branch")));
+                        stringArg(args, "branch"), boolArg(args, "transitive", false)));
     }
 
     private McpSchema.CallToolResult handleFindReferences(
@@ -648,6 +653,13 @@ public class McpServerBootstrap {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    private boolean boolArg(Map<String, Object> args, String key, boolean defaultValue) {
+        Object val = args.get(key);
+        if (val == null) return defaultValue;
+        if (val instanceof Boolean b) return b;
+        return Boolean.parseBoolean(val.toString());
     }
 
 }
