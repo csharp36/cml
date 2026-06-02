@@ -6,3 +6,9 @@ build
 
 # BMad output
 _bmad-output/
+
+# Python bytecode (bench/analyze.py)
+__pycache__/
+
+# macOS
+.DS_Store

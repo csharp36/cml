@@ -1,0 +1,8 @@
+{
+  "permissions": { "deny": [] },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": ".*", "hooks": [ { "type": "command", "command": "bash /Users/csharpl/Projects/SourceCodeIndexerMCP/bench/hooks/enforce-and-log.sh" } ] }
+    ]
+  }
+}

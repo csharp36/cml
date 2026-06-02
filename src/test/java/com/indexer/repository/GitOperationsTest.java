@@ -93,6 +93,21 @@ class GitOperationsTest {
     }
 
     @Test
+    void diffFromBaseIncludesModifiedFileForRefBehindBase() throws IOException {
+        // Fault-in of a ref BEHIND the indexed base (e.g. an old release tag): the overlay
+        // must store the ref's version of every file that differs from the base. FileA was
+        // modified between firstSha and secondSha, so a fault-in of firstSha (base=secondSha)
+        // must surface FileA so its older content is stored in the overlay.
+        // Regression: a three-dot diff (base...ref) collapses to "ref...ref" = empty here,
+        // silently producing a zero-file overlay.
+        List<String> changed = gitOps.diffFromBase(repoDir, secondSha, firstSha);
+
+        assertThat(changed)
+                .as("ref behind base must still report files that differ (FileA), not an empty overlay")
+                .contains("FileA.java");
+    }
+
+    @Test
     void listAllFilesReturnsTrackedFiles() throws IOException {
         List<String> files = gitOps.listAllFiles(repoDir);
 

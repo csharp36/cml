@@ -84,7 +84,11 @@ public class GitOperations {
      * @param baseBranch the fully-indexed base branch (repo's configured branch)
      */
     public List<String> diffFromBase(Path repoDir, String baseBranch, String branchSha) throws IOException {
-        List<String> cmd = List.of("git", "diff", "--name-only", baseBranch + "..." + branchSha);
+        // Two-dot (base..ref): list every file that differs between the base and the ref, in
+        // BOTH directions of ancestry. Three-dot (base...ref) diffs from the merge-base to the
+        // ref, which collapses to empty when the ref is an ancestor of the base (e.g. an old
+        // release tag) — silently producing a zero-file overlay. See GitOperationsTest.
+        List<String> cmd = List.of("git", "diff", "--name-only", baseBranch + ".." + branchSha);
         String output = runCommandOutput(cmd, repoDir, null);
         List<String> files = new ArrayList<>();
         for (String line : output.split("\n")) {
