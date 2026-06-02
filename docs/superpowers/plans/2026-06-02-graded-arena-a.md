@@ -61,6 +61,43 @@ docs/superpowers/results/2026-06-02-arenaA-graded-results.md   # write-up + deci
 
 ## Phase 0 — Make SCIP queryable for Hazelcast @ `7af6ddea` (reuse the pre-built index)
 
+> **Transport = Full MCP fidelity (resolved 2026-06-02).** The arms call the real tool path
+> over Streamable HTTP, which requires an `initialize`→`mcp-session-id`→`tools/call` handshake
+> (a one-shot `curl` to `/mcp` returns "Session ID required"). A reusable `mcp_call.py` client
+> (Task 2.0) handles it. Also: the running indexer serves OLD compiled classes (no `transitive`
+> flag) via `./gradlew run` from `build/classes/java/main`, so Task 0.0 rebuilds + restarts it.
+
+### Task 0.0: Rebuild and restart the indexer with the transitive-find_implementations code
+
+**Files:** none (operational).
+
+- [ ] **Step 1: Confirm the new flag is committed and compiles**
+
+Run: `git log --oneline -1 -- src/main/java/com/indexer/mcp/QueryExecutor.java && ./gradlew classes -q`
+Expected: shows commit `0c86e50` (transitive closure) in history; `classes` builds clean.
+
+- [ ] **Step 2: Restart `./gradlew run` with the same env it launched with**
+
+Run (the indexer is PID-tree under a `./gradlew run`; restart it):
+```bash
+pkill -f 'com.indexer' || true; sleep 2
+cd /Users/csharpl/Projects/SourceCodeIndexerMCP
+DB_PASSWORD=changeme CI_UPLOAD_KEY=test123 ADMIN_TOKEN=dev-token nohup ./gradlew run > /tmp/indexer.log 2>&1 &
+```
+Expected: process starts; `/tmp/indexer.log` shows boot. (Use the real secrets already in the
+operator's environment — `CI_UPLOAD_KEY=test123` is the live value; do not commit it.)
+
+- [ ] **Step 3: Wait for health and confirm the new code is live**
+
+Run:
+```bash
+for i in $(seq 1 60); do curl -fsS http://localhost:8080/admin/health -H "Authorization: Bearer dev-token" >/dev/null 2>&1 && break; sleep 2; done
+curl -s -D- http://localhost:8080/mcp -H "Authorization: Bearer test123" -H 'Accept: application/json, text/event-stream' -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"x","version":"0"}}}' | grep -i 'mcp-session-id'
+```
+Expected: an `Mcp-Session-Id` header is returned (server up). The `transitive` arg is now
+accepted (verified end-to-end in Task 2.2's smoke test).
+
 > Risk: `scip-java` must compile Hazelcast (~2M LOC). If a full build fails, fall back to a
 > subset of modules (Task 0.3 fallback) — a partial SCIP layer still supports the benchmark
 > as long as the selected questions' types are covered (enforce in Task 1.3).
@@ -462,6 +499,79 @@ Each arm reads `questions.jsonl` and emits, per question, a JSON line:
 `{"id":..., "arm":..., "found_simple":[...], "found_fqn":[...] | null, "calls": <int>}`.
 `found_fqn` is populated only by arms that resolve packages (scip); grep/cte set it null.
 
+### Task 2.0: MCP session client (`mcp_call.py`) for the index arms
+
+**Files:**
+- Create: `bench/arenaA/arms/mcp_call.py`
+
+- [ ] **Step 1: Write the client**
+
+```python
+#!/usr/bin/env python3
+"""Minimal Streamable-HTTP MCP client: initialize -> session -> tools/call.
+Usage: SERVER=.. HZ_READ_KEY=.. mcp_call.py <tool_name> <args_json>
+Prints the tool result's first text-content payload (the tool's own JSON) to stdout."""
+import os, sys, json, urllib.request
+
+SERVER = os.environ["SERVER"].rstrip("/")
+KEY = os.environ.get("HZ_READ_KEY") or os.environ["CI_UPLOAD_KEY"]
+
+def _post(body, session=None):
+    headers = {"Authorization": f"Bearer {KEY}", "Content-Type": "application/json",
+               "Accept": "application/json, text/event-stream"}
+    if session:
+        headers["mcp-session-id"] = session
+    req = urllib.request.Request(SERVER + "/mcp", data=json.dumps(body).encode(), headers=headers)
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.headers.get("mcp-session-id"), r.read().decode()
+
+def _parse(raw):
+    raw = raw.strip()
+    if not raw:
+        return None
+    if raw[0] == "{":
+        return json.loads(raw)
+    out = None
+    for line in raw.splitlines():
+        if line.startswith("data:"):
+            out = json.loads(line[5:].strip())
+    return out
+
+def call(tool, args):
+    sid, _ = _post({"jsonrpc":"2.0","id":1,"method":"initialize",
+                    "params":{"protocolVersion":"2025-03-26","capabilities":{},
+                              "clientInfo":{"name":"arenaA","version":"0"}}})
+    _post({"jsonrpc":"2.0","method":"notifications/initialized","params":{}}, session=sid)
+    _, raw = _post({"jsonrpc":"2.0","id":2,"method":"tools/call",
+                    "params":{"name":tool,"arguments":args}}, session=sid)
+    resp = _parse(raw)
+    content = (resp or {}).get("result", {}).get("content", [])
+    for c in content:
+        if c.get("type") == "text":
+            return c["text"]
+    return json.dumps(resp)
+
+if __name__ == "__main__":
+    print(call(sys.argv[1], json.loads(sys.argv[2])))
+```
+
+- [ ] **Step 2: Smoke test against the live server (requires Task 0.0 restart done)**
+
+Run:
+```bash
+source bench/arenaA/pin.env
+python3 bench/arenaA/arms/mcp_call.py find_implementations \
+  "{\"type_name\":\"DataSerializable\",\"repo\":\"hazelcast\",\"branch\":\"$PIN_REF\",\"transitive\":true}" | head -c 300
+```
+Expected: a JSON payload containing `class_name` entries (proves session + transitive flag live).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add bench/arenaA/arms/mcp_call.py
+git commit -m "feat(arenaA): minimal MCP session client for the index arms"
+```
+
 ### Task 2.1: grep-iterative closure (strong grep baseline)
 
 **Files:**
@@ -532,14 +642,15 @@ git commit -m "feat(arenaA): grep-iterative closure arm"
 ```bash
 cat > bench/arenaA/arms/run_index_cte.sh <<'EOF'
 #!/usr/bin/env bash
-# Usage: HZ_READ_KEY=.. SERVER=.. run_index_cte.sh <questions.jsonl> > cte.results.jsonl
+# Usage: (source pin.env first) run_index_cte.sh <questions.jsonl> > cte.results.jsonl
 set -euo pipefail
-Q="$1"
+Q="$1"; HERE="$(dirname "$0")"
+: "${PIN_REF:?set PIN_REF (source pin.env)}"
 while IFS= read -r line; do
   id=$(jq -r .id <<<"$line"); name=$(jq -r .type_simple <<<"$line")
-  req=$(jq -cn --arg n "$name" --arg ref "${PIN_REF:?set PIN_REF (source pin.env)}" '{jsonrpc:"2.0",id:1,method:"tools/call",
-        params:{name:"find_implementations",arguments:{type_name:$n,repo:"hazelcast",branch:$ref,transitive:true}}}')
-  resp=$(curl -s "$SERVER/mcp" -H "Authorization: Bearer $HZ_READ_KEY" -H 'Content-Type: application/json' -d "$req")
+  args=$(jq -cn --arg n "$name" --arg ref "$PIN_REF" \
+        '{type_name:$n,repo:"hazelcast",branch:$ref,transitive:true}')
+  resp=$(python3 "$HERE/mcp_call.py" find_implementations "$args")
   found=$(jq -r '..|.class_name? // empty' <<<"$resp" | sort -u | jq -R . | jq -cs .)
   jq -cn --arg id "$id" --argjson f "$found" '{id:$id, arm:"index_cte", found_simple:$f, found_fqn:null, calls:1}'
 done < "$Q"
@@ -569,14 +680,15 @@ git commit -m "feat(arenaA): index transitive-CTE arm"
 ```bash
 cat > bench/arenaA/arms/run_index_scip.sh <<'EOF'
 #!/usr/bin/env bash
-# Usage: HZ_READ_KEY=.. SERVER=.. run_index_scip.sh <questions.jsonl> > scip.results.jsonl
+# Usage: (source pin.env first) run_index_scip.sh <questions.jsonl> > scip.results.jsonl
 set -euo pipefail
-Q="$1"
+Q="$1"; HERE="$(dirname "$0")"
+: "${PIN_REF:?set PIN_REF (source pin.env)}"
 while IFS= read -r line; do
   id=$(jq -r .id <<<"$line"); name=$(jq -r .type_simple <<<"$line")
-  req=$(jq -cn --arg n "$name" --arg ref "${PIN_REF:?set PIN_REF (source pin.env)}" '{jsonrpc:"2.0",id:1,method:"tools/call",
-        params:{name:"get_type_hierarchy",arguments:{repo:"hazelcast",symbol_name:$n,direction:"down",branch:$ref,depth:10}}}')
-  resp=$(curl -s "$SERVER/mcp" -H "Authorization: Bearer $HZ_READ_KEY" -H 'Content-Type: application/json' -d "$req")
+  args=$(jq -cn --arg n "$name" --arg ref "$PIN_REF" \
+        '{repo:"hazelcast",symbol_name:$n,direction:"down",branch:$ref,depth:10}')
+  resp=$(python3 "$HERE/mcp_call.py" get_type_hierarchy "$args")
   # SCIP nodes carry display names and/or fqns; collect both defensively
   fqn=$(jq -r '..|.fqn? // .symbol? // empty' <<<"$resp" | grep -E '[A-Za-z]' | sort -u | jq -R . | jq -cs .)
   simple=$(jq -r '..|.name? // .display_name? // empty' <<<"$resp" | sort -u | jq -R . | jq -cs .)
