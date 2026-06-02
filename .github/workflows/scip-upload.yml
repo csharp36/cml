@@ -26,22 +26,52 @@ jobs:
     runs-on: ubuntu-latest        # see note: must reach SCIP_SERVER (self-hosted if indexer is internal)
     timeout-minutes: 20           # scip-java does a full compile; cml indexes in ~minutes
     steps:
+      # Reachability gate. The indexer may be offline (e.g. it runs on a laptop behind
+      # a tunnel), in which case there's nothing to upload to — and that's not a failure.
+      # Probe SCIP_SERVER first and, if it's down (or unconfigured), skip every step below
+      # so the job ends green instead of wasting a ~15-min build on a doomed upload.
+      - name: Check indexer reachability
+        id: reachability
+        env:
+          SCIP_SERVER: ${{ secrets.SCIP_SERVER }}
+        run: |
+          set -uo pipefail
+          if [ -z "${SCIP_SERVER:-}" ]; then
+            echo "::notice title=SCIP upload skipped::SCIP_SERVER is not configured — nothing to upload to."
+            echo "reachable=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Any HTTP response (even 401/404) proves the indexer is up; "000" / non-zero
+          # curl means we couldn't connect (DNS, timeout, refused) -> treat as offline.
+          code=$(curl -sS -m 15 --retry 2 --retry-delay 3 -o /dev/null -w '%{http_code}' \
+                   "${SCIP_SERVER%/}/admin/health" || true)
+          if [ -n "$code" ] && [ "$code" != "000" ]; then
+            echo "::notice title=Indexer reachable::HTTP $code from $SCIP_SERVER — proceeding with SCIP upload."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=SCIP upload skipped::Indexer at $SCIP_SERVER is unreachable (offline?) — skipping, not failing."
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.reachability.outputs.reachable == 'true'
         with:
           fetch-depth: 1          # HEAD only; X-Git-SHA = git rev-parse HEAD = the pushed main commit
 
       # cml is Java 21 / Gradle (Kotlin DSL). scip-java forks its own Gradle build
       # (scipCompileAll), so it needs the same JDK the project compiles with.
       - name: Set up JDK 21
+        if: steps.reachability.outputs.reachable == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
+        if: steps.reachability.outputs.reachable == 'true'
         uses: gradle/actions/setup-gradle@v4   # dependency + build cache
 
       - name: Install scip-java (coursier)
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           set -euo pipefail
           # scip-java is NOT in coursier's default app channel, so `cs install scip-java`
@@ -62,6 +92,7 @@ jobs:
       # multi-part session API. Providing the jar unconditionally makes the upload step
       # size-independent — the same command works whether the index is 5 MB or 500 MB.
       - name: Build SCIP splitter jar
+        if: steps.reachability.outputs.reachable == 'true'
         run: ./gradlew shadowJar   # -> build/libs/indexer.jar
 
       # scip-upload.sh auto-detects Java (build.gradle.kts present), runs
@@ -69,6 +100,7 @@ jobs:
       # with X-Git-SHA = HEAD. --fail-on-error makes a bad upload fail the job.
       # SCIP_SPLITTER_JAR is honored automatically (equivalent to --splitter-jar).
       - name: Generate and upload SCIP
+        if: steps.reachability.outputs.reachable == 'true'
         run: ./scripts/scip-upload.sh --fail-on-error
         env:
           SCIP_SPLITTER_JAR: ${{ github.workspace }}/build/libs/indexer.jar
