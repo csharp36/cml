@@ -355,43 +355,91 @@ public class QueryExecutor {
     }
 
     /**
-     * Find implementations of a type by looking up 'implements' relationships.
+     * Find implementations of a type by looking up 'implements' relationships (direct only).
      */
     public Object findImplementations(String typeName, String repo, String branch) {
+        return findImplementations(typeName, repo, branch, false);
+    }
+
+    /**
+     * Find implementations of a type.
+     *
+     * <p>When {@code transitive} is false this returns only classes whose declaration
+     * literally {@code implements <typeName>} — the direct-edge lookup, which is
+     * recall-equivalent to {@code grep "implements X"}.
+     *
+     * <p>When {@code transitive} is true this walks the {@code implements ∪ extends} graph
+     * (already stored in {@code type_relationships}) to its closure, so it also returns
+     * indirect implementers — subclasses of an implementer, and implementers of a
+     * sub-interface — that a direct lookup (and grep) cannot reach. The walk is name-matched
+     * on the unqualified {@code related_name}, so it can over-count where type names collide
+     * across packages; a type-resolved (SCIP) layer is needed to disambiguate those.
+     */
+    public Object findImplementations(String typeName, String repo, String branch, boolean transitive) {
         String baseBranch = baseBranch(repo);
         String effectiveBranch = resolveBranch(branch, baseBranch);
         if (repo != null && !repo.isBlank()) {
             ensureBranchIndexed(repo, effectiveBranch);
         }
+        boolean hasRepo = repo != null && !repo.isBlank();
+        String repoFilter = hasRepo ? " AND r.name = :repo" : "";
         return jdbi.withHandle(handle -> {
-            var sb = new StringBuilder(effectiveFilesCte(effectiveBranch, baseBranch));
-            sb.append("""
-                    SELECT s.name AS class_name, s.signature, ef.path AS file_path, r.name AS repo_name
-                    FROM type_relationships tr
-                    JOIN symbols s ON tr.symbol_id = s.id
-                    JOIN effective_files ef ON s.file_id = ef.id
-                    JOIN repositories r ON ef.repo_id = r.id
-                    WHERE tr.related_name = :typeName AND tr.kind = 'implements'
-                    """);
+            String sql;
+            if (!transitive) {
+                sql = effectiveFilesCte(effectiveBranch, baseBranch) + """
+                        SELECT s.name AS class_name, s.signature, ef.path AS file_path, r.name AS repo_name
+                        FROM type_relationships tr
+                        JOIN symbols s ON tr.symbol_id = s.id
+                        JOIN effective_files ef ON s.file_id = ef.id
+                        JOIN repositories r ON ef.repo_id = r.id
+                        WHERE tr.related_name = :typeName AND tr.kind = 'implements'
+                        """ + repoFilter;
+            } else {
+                // RECURSIVE: start from direct implementers/subtypes of :typeName, then walk
+                // anyone implementing/extending a name already in the closure.
+                String cte = effectiveFilesCte(effectiveBranch, baseBranch)
+                        .replaceFirst("WITH ", "WITH RECURSIVE ");
+                sql = cte + """
+                        , impl_closure(name) AS (
+                            SELECT s.name
+                            FROM type_relationships tr
+                            JOIN symbols s ON tr.symbol_id = s.id
+                            JOIN effective_files ef ON s.file_id = ef.id
+                            JOIN repositories r ON ef.repo_id = r.id
+                            WHERE tr.related_name = :typeName AND tr.kind IN ('implements','extends')""" + repoFilter + """
+
+                            UNION
+                            SELECT s.name
+                            FROM type_relationships tr
+                            JOIN symbols s ON tr.symbol_id = s.id
+                            JOIN effective_files ef ON s.file_id = ef.id
+                            JOIN repositories r ON ef.repo_id = r.id
+                            JOIN impl_closure c ON tr.related_name = c.name
+                            WHERE tr.kind IN ('implements','extends')""" + repoFilter + """
+
+                        )
+                        SELECT DISTINCT s.name AS class_name, s.signature, ef.path AS file_path, r.name AS repo_name
+                        FROM impl_closure c
+                        JOIN symbols s ON s.name = c.name
+                        JOIN effective_files ef ON s.file_id = ef.id
+                        JOIN repositories r ON ef.repo_id = r.id
+                        WHERE s.name <> :typeName""" + repoFilter;
+            }
 
             var params = new LinkedHashMap<String, Object>();
-
             if (!effectiveBranch.equals(baseBranch)) {
                 params.put("branch", effectiveBranch);
             }
-
             params.put("typeName", typeName);
-
-            if (repo != null && !repo.isBlank()) {
-                sb.append(" AND r.name = :repo");
+            if (hasRepo) {
                 params.put("repo", repo);
             }
 
-            var q = handle.createQuery(sb.toString());
+            var q = handle.createQuery(sql);
             params.forEach(q::bind);
             var results = q.mapToMap().list();
 
-            if (repo != null && !repo.isBlank()) {
+            if (hasRepo) {
                 var wrapper = new LinkedHashMap<String, Object>();
                 wrapper.put("results", results);
                 String scipStatus = getScipStatus(repo);
