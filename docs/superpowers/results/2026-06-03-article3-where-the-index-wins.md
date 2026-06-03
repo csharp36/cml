@@ -1,16 +1,7 @@
 # Where a semantic code index finally beats grep: type-resolved reachability
 
-![Hero image — placeholder. The same dark field of code-file tiles from the first two articles. A
-question — "who implements this?" — sends out a grep flashlight that lights a handful of nearby
-tiles and stops at a wall of unlit ones; beside it, a semantic-index beam threads the whole
-connected constellation and lights them all in one stroke.](article3-hero.png)
-
-<!-- HERO IMAGE — generate via DALL·E / Midjourney / Gemini (16:9), then replace article3-hero.png:
-"Editorial digital illustration, dark technical aesthetic, high contrast, no text. A vast dark field
-of small code-file rectangles. From a single point, two responses to one question: a narrow orange
-flashlight beam that lights a small cluster and is blocked by a faint wall of dark tiles just beyond;
-and an emerald-green network trace that follows glowing connections across the whole field and lights
-a large connected constellation in one continuous stroke. Minimal, cinematic, 16:9." -->
+![A grep flashlight catches one small cluster of code on the left, blocked by darkness beyond it;
+on the right, the index lights the whole connected type graph as a glowing constellation.](article3-hero.png)
 
 *Findings writeup — 2026-06-03. Part 3 of a series. Single-repo, small-n; every number is
 reproducible from `bench/arenaA/` on `main` of [github.com/csharp36/cml](https://github.com/csharp36/cml).*
@@ -151,6 +142,11 @@ Broken out by task flavor:
 |---|---|---|---|
 | structural (8) | 0.245 | 0.379 | **0.828** |
 | lexical (4) | 0.482 | 0.741 | **0.975** |
+
+![Two bar panels, recall and F1, across the three arms. grep-iterative is lowest (recall 0.32, F1
+0.32), tree-sitter in the middle (0.50 / 0.50), SCIP far ahead (recall 0.97, F1 0.88) — a clean
+monotone staircase. The F1 panel is annotated: grep takes 102 queries (max 481) per question, SCIP
+takes 1.](figure-arenaA-recall-f1.png)
 
 SCIP is the best-or-tied on **11 of 12** questions; it never loses one. `grep` wins **zero**. On
 several deep hierarchies the source-parse arms post an outright **0.0** — they find the interface and
