@@ -122,8 +122,8 @@ COBOL in CardDemo is **fixed-format**: columns 1–6 are a sequence area, column
 from recon.extract import normalize_line
 
 def test_strips_sequence_area_and_trailing_columns():
-    # cols 1-6 sequence, col 7 space, code in 8-72, junk after 72
-    raw = "001000     CALL 'PROGB'." + "X" * 20
+    # base statement padded to col 72, then junk in cols 73+ which must be dropped
+    raw = "001000     CALL 'PROGB'.".ljust(72) + "X" * 20
     assert normalize_line(raw) == "    CALL 'PROGB'."
 
 def test_comment_line_returns_none():
@@ -159,7 +159,7 @@ def normalize_line(raw: str) -> str | None:
     indicator = raw[6]
     if indicator in ("*", "/"):
         return None
-    return raw[7:72]
+    return raw[7:72].rstrip()
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
