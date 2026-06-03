@@ -10,6 +10,8 @@ import io.proleap.cobol.asg.metamodel.procedure.Statement;
 import io.proleap.cobol.asg.metamodel.procedure.call.CallStatement;
 import io.proleap.cobol.asg.metamodel.procedure.execcics.ExecCicsStatement;
 import io.proleap.cobol.asg.metamodel.procedure.execsql.ExecSqlStatement;
+import io.proleap.cobol.asg.metamodel.procedure.move.MoveStatement;
+import io.proleap.cobol.asg.metamodel.procedure.move.MoveToStatement;
 import io.proleap.cobol.asg.metamodel.procedure.read.ReadStatement;
 import io.proleap.cobol.asg.metamodel.procedure.write.WriteStatement;
 import io.proleap.cobol.asg.metamodel.valuestmt.CallValueStmt;
@@ -21,8 +23,10 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,6 +63,10 @@ public final class ProgramExtractor {
     // ctx-text fallback for READ/WRITE: first token after the verb.
     private static final Pattern READ_OP = Pattern.compile("(?i)^READ\\s+([A-Z0-9-]+)");
     private static final Pattern WRITE_OP = Pattern.compile("(?i)^WRITE\\s+([A-Z0-9-]+)");
+    // VALUE 'literal' data-item initializer: group 1 = field name, group 2 = literal.
+    // Matches an elementary item: level number, field name, ... VALUE 'lit'.
+    private static final Pattern VALUE_INIT = Pattern.compile(
+            "(?is)\\b\\d{1,2}\\s+([A-Z0-9-]+)\\b[^.]*?\\bVALUE\\s+(?:IS\\s+)?'([^']+)'");
 
     public ProgramEdges extract(Program program, String programId) {
         ProgramEdges edges = new ProgramEdges();
@@ -73,8 +81,14 @@ public final class ProgramExtractor {
         Set<String> filesWritten = new LinkedHashSet<>();
         Set<String> db2Tables = new LinkedHashSet<>();
 
+        // field name -> { literal program names ever assigned } (flow-insensitive over-approximation).
+        Map<String, Set<String>> fieldLiterals = new HashMap<>();
+        collectValueInitializers(program, fieldLiterals);
+
         for (Statement stmt : collectStatements(program)) {
-            if (stmt instanceof CallStatement cs) {
+            if (stmt instanceof MoveStatement ms) {
+                handleMove(ms, fieldLiterals);
+            } else if (stmt instanceof CallStatement cs) {
                 handleCall(cs, staticCalls, dynamicCalls);
             } else if (stmt instanceof ExecCicsStatement cics) {
                 handleCics(cics.getExecCicsText(), staticXctl, dynamicXctl);
@@ -106,7 +120,68 @@ public final class ProgramExtractor {
         edges.filesRead = new ArrayList<>(filesRead);
         edges.filesWritten = new ArrayList<>(filesWritten);
         edges.db2Tables = new ArrayList<>(db2Tables);
+
+        // B2: resolve dynamic CALL / XCTL identifiers to concrete program names via the
+        // field -> literals map built above, and count the truly-unresolvable operands.
+        new ConstantPropagator().resolve(edges, fieldLiterals);
         return edges;
+    }
+
+    // ---- MOVE (constant propagation source) -----------------------------------
+
+    /**
+     * Record a {@code MOVE 'literal' TO field [field ...]} into the field→literals map.
+     * Only literal sending operands contribute; identifier sources (e.g. {@code MOVE WS-FOO TO X})
+     * carry no constant and are skipped, so a field that never receives a literal stays unresolved.
+     */
+    private static void handleMove(MoveStatement ms, Map<String, Set<String>> fieldLiterals) {
+        MoveToStatement to = ms.getMoveToStatement();
+        if (to == null || to.getSendingArea() == null) {
+            return;
+        }
+        ValueStmt sending = to.getSendingArea().getSendingAreaValueStmt();
+        if (!(sending instanceof LiteralValueStmt lit)) {
+            return; // non-literal source — no constant to propagate
+        }
+        String literal = literalText(lit);
+        if (literal == null || literal.isEmpty()) {
+            return;
+        }
+        List<Call> receivers = to.getReceivingAreaCalls();
+        if (receivers == null) {
+            return;
+        }
+        for (Call receiver : receivers) {
+            String field = callName(receiver);
+            if (field != null) {
+                fieldLiterals.computeIfAbsent(field, k -> new LinkedHashSet<>()).add(literal);
+            }
+        }
+    }
+
+    /**
+     * Fold {@code VALUE 'literal'} data-item initializers into the field→literals map by regexing
+     * each program unit's data-division text. This is a best-effort over-approximation: it catches
+     * elementary items declared with a literal VALUE so a field initialised (but never MOVEd) is
+     * still resolvable. Numeric and figurative-constant VALUEs are ignored (only quoted literals).
+     */
+    private static void collectValueInitializers(Program program, Map<String, Set<String>> fieldLiterals) {
+        for (CompilationUnit cu : program.getCompilationUnits()) {
+            for (ProgramUnit pu : cu.getProgramUnits()) {
+                if (pu.getDataDivision() == null || pu.getDataDivision().getCtx() == null) {
+                    continue;
+                }
+                String text = pu.getDataDivision().getCtx().getText();
+                Matcher m = VALUE_INIT.matcher(text);
+                while (m.find()) {
+                    String field = m.group(1);
+                    String literal = m.group(2);
+                    if (field != null && literal != null && !literal.isEmpty()) {
+                        fieldLiterals.computeIfAbsent(field, k -> new LinkedHashSet<>()).add(literal);
+                    }
+                }
+            }
+        }
     }
 
     // ---- CALL -----------------------------------------------------------------
