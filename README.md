@@ -45,7 +45,9 @@ quality rather than human ergonomics. Be clear-eyed about where it helps:
 - **You need type-resolved semantics.** `find_implementations`, `get_type_hierarchy`, and
   `get_symbol_references` answer "who implements this interface / what's the subtype tree / who
   references this symbol" from SCIP data. `grep` finds *text* — it can't resolve types or follow
-  `implements`/`extends` edges without running a compiler or LSP yourself.
+  `implements`/`extends` edges without running a compiler or LSP yourself. This is the index's
+  **measured** advantage: on transitive "who implements `X`" questions it roughly triples `grep`'s
+  recall at one query instead of ~102 (see [What the benchmarks show](#what-the-benchmarks-show)).
 - **Token economy matters.** Tools return *shaped* results — signatures + locations, file
   structure without bodies — instead of raw file dumps or `grep -A/-B` context. For an LLM
   navigating a large codebase, that's the difference between answering a question and blowing the
@@ -98,6 +100,36 @@ tree into the model, and the comparison is semantic, not textual.
 - Full type-resolved precision needs **SCIP uploaded per build SHA** (see [Semantic Indexing](#semantic-indexing-scip)).
 - The symbol-level `diff_branches` is only as good as its parser; reach for `git diff` when you want
   the authoritative file-level answer.
+
+## What the benchmarks show
+
+We ran three controlled experiments against [Hazelcast](https://github.com/hazelcast/hazelcast)
+(~2M LOC) comparing CML to a strong `grep` baseline, and published the results — including the
+ones that didn't flatter the index. The honest summary: **CML is not a faster `grep`, and on
+general tasks it doesn't beat one.** It earns its place on the *one* class of question `grep` is
+structurally blind to.
+
+- **Where it decisively wins — type-resolved reachability.** "List every concrete type that is-a
+  `X`, transitively" (all implementers / the subtype tree). Across 12 such questions scored against
+  an **independent compiled-bytecode oracle**, CML's SCIP-backed `get_type_hierarchy` hit **recall
+  0.97 / F1 0.88 in a single query**, versus iterative `grep` at **0.32 / 0.32 over ~102 queries**
+  (tree-sitter sits between at 0.50 / 0.50). The win is **completeness, not precision**: `grep` and
+  source-parsing reconstruct the hierarchy from the `implements`/`extends` text a reader sees, and
+  miss every edge only the compiler resolves — generics, cross-module interface chains, supertypes
+  reached through an abstract base. Those are most of the graph in a mature codebase.
+  ([writeup](docs/superpowers/results/2026-06-03-article3-where-the-index-wins.md))
+- **Where it ties or loses — and you should just use `grep`.** *Implementing a real feature*
+  ([Article 1](https://medium.com/@csharp36/does-a-semantic-code-index-make-claude-code-a-better-engineer-a-controlled-experiment-c90b193204ee))
+  and *locating a PR's change surface / general discovery*
+  ([Article 2](https://medium.com/@csharp36/discovery-benchmark-semantic-index-vs-grep-find-76ee87ce12c1))
+  were a tie-or-loss for the index, and `grep` was cheaper. For text-findable code already on your
+  disk, reach for `ripgrep`.
+
+**Bottom line:** use CML as a *type-resolution oracle* — *who implements this, what are its
+subtypes, what's the hierarchy* — answered in one call across code too large (or not local enough)
+to hold in your head. Treat it as a complement to `grep`, not a replacement. (Caveats: single repo,
+single language, n=12 on the reachability test — a strong, monotone direction, not a population
+study. Raw harness and per-question tables in [`bench/arenaA/`](bench/arenaA/).)
 
 ## Quick Start
 
