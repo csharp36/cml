@@ -1,11 +1,14 @@
 package oracle;
 
+import io.proleap.cobol.asg.metamodel.ASGElement;
 import io.proleap.cobol.asg.metamodel.CompilationUnit;
 import io.proleap.cobol.asg.metamodel.Program;
 import io.proleap.cobol.asg.metamodel.ProgramUnit;
 import io.proleap.cobol.asg.metamodel.Scope;
 import io.proleap.cobol.asg.metamodel.call.Call;
+import io.proleap.cobol.asg.metamodel.procedure.Paragraph;
 import io.proleap.cobol.asg.metamodel.procedure.ProcedureDivision;
+import io.proleap.cobol.asg.metamodel.procedure.Section;
 import io.proleap.cobol.asg.metamodel.procedure.Statement;
 import io.proleap.cobol.asg.metamodel.procedure.call.CallStatement;
 import io.proleap.cobol.asg.metamodel.procedure.execcics.ExecCicsStatement;
@@ -55,9 +58,13 @@ import java.util.regex.Pattern;
  */
 public final class ProgramExtractor {
 
-    // group 1 = the program operand of XCTL/LINK; a leading quote in the raw match ⇒ static.
+    // group 1 = leading quote (⇒ static literal); group 2 = the program operand of XCTL/LINK.
+    // The operand may be a quoted literal, a bare data-item, or a subscripted reference
+    // (e.g. PROGRAM(CDEMO-MENU-OPT-PGMNAME(WS-OPTION))) — for the latter we capture only the base
+    // identifier, which is the data-item carrying the dynamic target. We stop the name at the first
+    // of ' ( ) or whitespace, so a trailing subscript "(...)" and the closing ")" are not consumed.
     private static final Pattern CICS_XFER =
-            Pattern.compile("(?i)(?:XCTL|LINK)\\s+PROGRAM\\(\\s*('?)([A-Z0-9-]+)'?\\s*\\)");
+            Pattern.compile("(?i)(?:XCTL|LINK)\\s+PROGRAM\\(\\s*('?)([A-Z0-9-]+)");
     private static final Pattern SQL_TABLE =
             Pattern.compile("(?i)\\b(?:FROM|INTO|UPDATE|JOIN)\\s+([A-Z0-9_]+)");
     // ctx-text fallback for READ/WRITE: first token after the verb.
@@ -298,43 +305,76 @@ public final class ProgramExtractor {
     /**
      * Collect every {@link Statement} reachable from the program units.
      *
-     * <p>v2.4.0 note: statements are NOT exposed via {@link io.proleap.cobol.asg.metamodel.ASGElement#getChildren()}
-     * (that returns empty on a {@link ProcedureDivision}); they live on {@link Scope#getStatements()}.
-     * Some statements (IF, EVALUATE, PERFORM, ...) are themselves {@link Scope}s containing nested
-     * statements, so we recurse through any statement that is also a Scope.
+     * <p>Statements live on {@link Scope#getStatements()}, never on
+     * {@link ASGElement#getChildren()} of the {@link ProcedureDivision} (that returns empty at the
+     * division level). The procedure body is a nest of {@link Scope}s and we must descend all of it:
+     * <ul>
+     *   <li>The division's body is structured into {@link Section}s and {@link Paragraph}s (both
+     *       {@link Scope}s). The division itself exposes <em>zero</em> direct statements — they hang
+     *       off the paragraphs — so we seed the traversal with the division, its sections and its
+     *       paragraphs. (A synthetic sample with statements directly under the division still works,
+     *       because the division is itself seeded.)</li>
+     *   <li>Block statements (IF, EVALUATE, PERFORM, SEARCH, ...) are <em>not</em> Scopes themselves;
+     *       their bodies live on child Scopes ({@code IfStatement.getThen()/getElse()},
+     *       EVALUATE {@code WHEN} branches, the PERFORM body, ...). Those child Scopes are reachable
+     *       via {@link ASGElement#getChildren()} of the statement, so for every collected statement
+     *       we recurse through its ASG children, descending into any Scope we find. This is the only
+     *       way nested MOVE / EXEC CICS XCTL inside an IF/EVALUATE are seen — and in CardDemo the
+     *       dispatch logic (literal MOVEs to the target field, the XCTL itself) lives there.</li>
+     * </ul>
      */
     private static List<Statement> collectStatements(Program program) {
         List<Statement> out = new ArrayList<>();
+        Set<Object> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (CompilationUnit cu : program.getCompilationUnits()) {
             for (ProgramUnit pu : cu.getProgramUnits()) {
                 ProcedureDivision pd = pu.getProcedureDivision();
-                if (pd != null) {
-                    collectFromScope(pd, out);
+                if (pd == null) {
+                    continue;
+                }
+                collectFromScope(pd, out, seen);
+                if (pd.getSections() != null) {
+                    for (Section section : pd.getSections()) {
+                        collectFromScope(section, out, seen);
+                    }
+                }
+                if (pd.getParagraphs() != null) {
+                    for (Paragraph paragraph : pd.getParagraphs()) {
+                        collectFromScope(paragraph, out, seen);
+                    }
                 }
             }
         }
         return out;
     }
 
-    private static void collectFromScope(Scope scope, List<Statement> out) {
-        Deque<Scope> stack = new ArrayDeque<>();
-        Set<Scope> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-        stack.push(scope);
-        while (!stack.isEmpty()) {
-            Scope sc = stack.pop();
-            if (sc == null || !seen.add(sc)) {
-                continue;
-            }
-            List<Statement> stmts = sc.getStatements();
-            if (stmts == null) {
-                continue;
-            }
-            for (Statement s : stmts) {
-                out.add(s);
-                // IF / EVALUATE / PERFORM bodies etc. are themselves Scopes with nested statements.
-                if (s instanceof Scope nested) {
-                    stack.push(nested);
-                }
+    /** Add every statement of {@code scope}, descending into nested block-statement body Scopes. */
+    private static void collectFromScope(Scope scope, List<Statement> out, Set<Object> seen) {
+        if (scope == null || !seen.add(scope)) {
+            return;
+        }
+        List<Statement> stmts = scope.getStatements();
+        if (stmts == null) {
+            return;
+        }
+        for (Statement s : stmts) {
+            out.add(s);
+            // Block statements (IF/EVALUATE/PERFORM/...) carry their bodies as child Scopes,
+            // reachable via getChildren() — descend into them.
+            descendChildScopes(s, out, seen);
+        }
+    }
+
+    private static void descendChildScopes(ASGElement element, List<Statement> out, Set<Object> seen) {
+        if (element == null || element.getChildren() == null) {
+            return;
+        }
+        for (ASGElement child : element.getChildren()) {
+            if (child instanceof Scope childScope) {
+                collectFromScope(childScope, out, seen);
+            } else if (child != null && seen.add(child)) {
+                // Intermediate wrapper (Then/Else/When/...) that isn't itself a Scope — keep walking.
+                descendChildScopes(child, out, seen);
             }
         }
     }
