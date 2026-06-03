@@ -11,11 +11,18 @@ For "list every concrete class that is a `X` (directly or through inheritance)" 
 oracle**:
 
 - **SCIP type resolution is a large, real win.** Mean name-F1 **0.877** (recall **0.972**) vs the
-  Tree-sitter / name-matched transitive arm's **0.499** (recall **0.496**). SCIP ≈ **doubles** it.
-- **The win is recall, not precision** — the opposite of the going-in hypothesis. Tree-sitter
-  structural parsing captures only ~half the true implementer set; it cannot follow the full type
-  graph (interface-extends-interface chains, cross-module, generic/aliased `implements`) that a
-  compiler-grade SCIP index sees. Both arms are reasonably precise.
+  Tree-sitter / name-matched transitive arm (CTE) **0.499** (recall **0.496**) and the grep-iterative
+  baseline **0.324** (recall **0.316**). Clean monotonic ordering **grep < CTE < SCIP**; SCIP ≈
+  **2.7× grep** on F1 and **3× on recall**.
+- **The win is recall, not precision** — the opposite of the going-in hypothesis. Source-parse
+  approaches (grep, Tree-sitter) capture only ~⅓–½ of the true implementer set; they cannot follow
+  the full type graph (interface-extends-interface chains, cross-module, generic/aliased
+  `implements`) that a compiler-grade SCIP index sees. All three arms are similarly precise.
+- **And SCIP wins both strata** — including the lexical controls that should favor grep
+  (lexical: SCIP 0.975 vs grep 0.482; structural: SCIP 0.828 vs grep 0.245).
+- **At a fraction of the effort:** each index arm answers in **1** query; grep-iterative averages
+  **102** `grep` passes per question (max 481) — ~two orders of magnitude more work for the worst
+  accuracy.
 - **Harness validated against ground truth:** on `DataSerializable`, SCIP matches the bytecode
   oracle at **F1 0.97** (precision 0.955, recall 0.986) once scope is aligned.
 
@@ -23,11 +30,6 @@ This **settles keep-or-kill: KEEP.** The type-resolution layer (SCIP) delivers t
 the whole project was premised on — and which the two prior benchmarks never actually exercised
 (SCIP was unpopulated; `find_implementations` was a direct-only lookup). It is now built, populated,
 and measured.
-
-> **Status:** the `grep`-iterative baseline arm is still running (BFS closure; ~2 min/question, far
-> more on the large hierarchies). Its numbers will be appended; the SCIP-vs-CTE result above already
-> decides the keep/kill question, since the CTE *is* the strongest source-parse/name-matched approach
-> (the same class of method grep uses).
 
 ## Method
 
@@ -63,17 +65,41 @@ SCIP reproduces the compiler's view almost exactly. The CTE is precise but recov
 
 ## Headline results (n = 12; mean over questions)
 
-| arm | name P | name R | name **F1** | collision-prec | FQN F1 |
-|---|---|---|---|---|---|
-| **index_scip** | 0.861 | **0.972** | **0.877** | 0.823 | 0.843 |
-| **index_cte** | 0.666 | 0.496 | **0.499** | 0.650 | — |
-| **grep** | *pending* | | | | |
+| arm | name P | name R | name **F1** | collision-prec | FQN F1 | calls/q |
+|---|---|---|---|---|---|---|
+| **index_scip** | 0.861 | **0.972** | **0.877** | 0.823 | 0.843 | **1** |
+| **index_cte** | 0.666 | 0.496 | **0.499** | 0.650 | — | **1** |
+| **grep** | 0.650 | 0.316 | **0.324** | 0.649 | — | **102** (max 481) |
 
-**Per-question (name-F1):** SCIP ≥ CTE on all 12. On four structural questions
-(`StepAwareOperation`, `AsynchronouslyExecutingBackupOperation`, `Step`, `AbstractCallableMessageTask`)
-the CTE scores **0.0** while SCIP scores 0.8–1.0. On the lexical controls both do well
-(`MutatingOperation`, `BackupOperation` = 1.0 for both). Two structural cases are hard for *both*
-(`MessageTask`, `SecureRequest`: SCIP 0.41, CTE 0.02) — SCIP still wins by ~20×.
+**Per-stratum mean name-F1:**
+
+| stratum | grep | CTE | SCIP |
+|---|---|---|---|
+| structural (8) | 0.245 | 0.379 | **0.828** |
+| lexical (4) | 0.482 | 0.741 | **0.975** |
+
+**Per-question (name-F1), grep / CTE / SCIP:**
+
+| type | stratum | grep | CTE | SCIP |
+|---|---|---|---|---|
+| Tenantable | stru | 0.828 | 0.996 | 0.996 |
+| MessageTask | stru | 0.116 | 0.017 | 0.412 |
+| SecureRequest | stru | 0.119 | 0.017 | 0.412 |
+| StepAwareOperation | stru | 0.021 | 0.000 | **1.000** |
+| IMapStepAwareOperation | stru | 0.000 | 1.000 | 1.000 |
+| AsynchronouslyExecutingBackupOperation | stru | 0.061 | 0.000 | **1.000** |
+| Step | stru | 0.108 | 0.000 | 0.800 |
+| NamedOperation | stru | 0.706 | 1.000 | 1.000 |
+| MutatingOperation | lexi | 0.662 | 1.000 | 1.000 |
+| BackupOperation | lexi | 0.579 | 1.000 | 1.000 |
+| Versioned | lexi | 0.282 | 0.964 | 0.994 |
+| AbstractCallableMessageTask | lexi | 0.404 | 0.000 | 0.907 |
+
+SCIP is the best or tied-best on **11 of 12** (CTE edges it only on `IMapStepAwareOperation`, where
+SCIP also scores 1.0 — a tie). grep never wins a single question. The source-parse arms post
+outright **0.0** on several structural types (CTE on four; grep on `IMapStepAwareOperation`) where
+SCIP scores 0.8–1.0. Two structural cases are hard for everyone (`MessageTask`, `SecureRequest`) but
+SCIP still leads by 3–20×.
 
 ## Interpretation
 
@@ -84,21 +110,25 @@ the CTE scores **0.0** while SCIP scores 0.8–1.0. On the lexical controls both
 - **Why the prior benchmarks tied:** they never had this arm on the board — SCIP was empty and
   `find_implementations` was direct-only (recall-equivalent to grep). Arena A is the first time the
   index's actual differentiator was populated and measured.
-- **Cost (preliminary):** index arms answer in **one** call; grep-iterative makes **hundreds**
-  (`calls` per question is recorded). Even before the grep arm's accuracy lands, its effort cost is
-  one to two orders of magnitude higher.
+- **Cost:** index arms answer in **one** call; grep-iterative averages **102** passes per question
+  (max 481, 1,224 total) — ~2 orders of magnitude more work — and still posts the *lowest* accuracy
+  (F1 0.324). Worst on both axes.
+- **Even the lexical controls go to SCIP** (0.975 vs grep 0.482). Naming a concrete token helps grep
+  find the *direct* implementers cheaply, but the transitive set still needs the type graph it can't
+  see — so its recall collapses (0.316) even where the task looks lexical.
 
 ## Decision
 
-**KEEP.** Against the pilot's rule, the keep condition is met decisively: SCIP recall ≥ grep/CTE and
-SCIP F1 (0.877) far exceeds the strongest source-parse arm (CTE 0.499), validated against a neutral
-oracle (DataSerializable F1 0.97). The semantic index has a genuine, measured advantage on a real,
-common question — "who implements / subtypes X" in a large codebase — that grep and Tree-sitter
-structurally cannot match.
+**KEEP.** Against the pilot's rule, the keep condition is met decisively: SCIP F1 **0.877** vs CTE
+**0.499** vs grep **0.324**, with SCIP recall **0.972** (≥ both) at **1 call** vs grep's 102,
+validated against a neutral oracle (DataSerializable F1 0.97). SCIP wins **both** strata and **11 of
+12** questions outright (one tie, zero losses); grep wins none. The semantic index has a genuine,
+measured advantage on a real, common question — "who implements / subtypes X" in a large codebase —
+that grep and Tree-sitter structurally cannot match, and at far lower cost.
 
 The trilogy lands: Article 1 "index loses (wrong phase)", Article 2 "discovery tie", **Article 3
-"we finally fought where grep can't follow — type-resolved reachability — and the index roughly
-doubles it."**
+"we finally fought where grep can't follow — type-resolved reachability — and the index tripled
+grep's recall (0.97 vs 0.32) at 1/100th the calls."**
 
 ## Threats to validity
 
@@ -107,8 +137,10 @@ doubles it."**
   independent tooling — `javap`, not `scip-java`) but both ultimately reflect the Java compiler. grep
   and the CTE are the truly independent lower-bound arms.
 - **Name-level scoring** can over-credit the name-only arms on collisions; the FQN and
-  collision-precision columns exist to expose that (SCIP collision-prec 0.823 > CTE 0.650).
-- **`grep` arm pending** — accuracy numbers to be appended; effort cost already shown far higher.
+  collision-precision columns exist to expose that (SCIP collision-prec 0.823 > CTE 0.650 ≈ grep 0.649).
+- **grep-iterative is one reasonable baseline,** not the only possible grep strategy; a cleverer
+  developer might prune the BFS or seed it better. But the recall ceiling is structural — text search
+  can't resolve the type graph — so a different grep tactic trades cost for the same recall wall.
 
 ## Reproduce
 
