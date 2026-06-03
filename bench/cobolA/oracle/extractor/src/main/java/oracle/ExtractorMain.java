@@ -19,6 +19,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -38,6 +39,10 @@ import java.util.stream.Stream;
  * <p>Usage: {@code ExtractorMain <corpusDir> <outJsonPath>}
  */
 public final class ExtractorMain {
+
+    /** A parsed program carried from pass 1 (parse + collect IDs) to pass 2 (extract edges). */
+    private record Parsed(Program program, String programId, String rawSource, Path path) {
+    }
 
     public static void main(String[] args) throws Exception {
         if (args.length < 2) {
@@ -71,6 +76,12 @@ public final class ExtractorMain {
         long dynXctlResolvedSum = 0;
         long dynUnresolvedSum = 0;
 
+        // PASS 1 — parse every program and collect each PROGRAM-ID into the knownPrograms set. This
+        // set is the over-connect gate for B2.5 OCCURS-table resolution: a structural menu-table
+        // match resolves only to literals that name a real corpus program, so plain (non-table)
+        // operands and stray VALUE strings never fan out into the call graph.
+        List<Parsed> programs = new ArrayList<>();
+        Set<String> knownPrograms = new java.util.LinkedHashSet<>();
         for (Path p : cbls) {
             String rawSource;
             try {
@@ -80,7 +91,6 @@ public final class ExtractorMain {
                 failures.add(p.getFileName() + " (read: " + t.getClass().getSimpleName() + ")");
                 continue;
             }
-
             try {
                 CobolParserParams params = new CobolParserParamsImpl();
                 params.setCopyBookDirectories(new ArrayList<>(copyDirs));
@@ -97,8 +107,20 @@ public final class ExtractorMain {
                 }
 
                 String programId = deriveProgramId(program, p);
-                ProgramEdges edges = new ProgramExtractor().extract(program, programId);
-                edges.copybooks = new ArrayList<>(CopyScanner.scan(rawSource));
+                programs.add(new Parsed(program, programId, rawSource, p));
+                knownPrograms.add(programId);
+            } catch (Throwable t) {
+                failed++;
+                failures.add(p.getFileName() + " (" + t.getClass().getSimpleName() + ": " + t.getMessage() + ")");
+            }
+        }
+
+        // PASS 2 — extract edges with the corpus PROGRAM-ID set threaded in, plus copybook scan.
+        for (Parsed prog : programs) {
+            try {
+                ProgramEdges edges = new ProgramExtractor()
+                        .extract(prog.program, prog.programId, knownPrograms);
+                edges.copybooks = new ArrayList<>(CopyScanner.scan(prog.rawSource));
 
                 all.add(edges);
                 parsed++;
@@ -107,7 +129,7 @@ public final class ExtractorMain {
                 dynUnresolvedSum += edges.unresolvedDynamicCount;
             } catch (Throwable t) {
                 failed++;
-                failures.add(p.getFileName() + " (" + t.getClass().getSimpleName() + ": " + t.getMessage() + ")");
+                failures.add(prog.path.getFileName() + " (" + t.getClass().getSimpleName() + ": " + t.getMessage() + ")");
             }
         }
 

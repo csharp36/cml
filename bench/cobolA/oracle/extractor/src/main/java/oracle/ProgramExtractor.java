@@ -76,6 +76,10 @@ public final class ProgramExtractor {
             "(?is)\\b\\d{1,2}\\s+([A-Z0-9-]+)\\b[^.]*?\\bVALUE\\s+(?:IS\\s+)?'([^']+)'");
 
     public ProgramEdges extract(Program program, String programId) {
+        return extract(program, programId, java.util.Collections.emptySet());
+    }
+
+    public ProgramEdges extract(Program program, String programId, Set<String> knownPrograms) {
         ProgramEdges edges = new ProgramEdges();
         edges.programId = programId;
 
@@ -131,6 +135,12 @@ public final class ProgramExtractor {
         // B2: resolve dynamic CALL / XCTL identifiers to concrete program names via the
         // field -> literals map built above, and count the truly-unresolvable operands.
         new ConstantPropagator().resolve(edges, fieldLiterals);
+
+        // B2.5: for operands STILL unresolved after direct const-prop, attempt OCCURS-table
+        // resolution — a subscripted ref into an OCCURS table that REDEFINES a VALUE-initialized
+        // group of program names (the CICS menu dispatch). Gated by knownPrograms to avoid
+        // over-connecting plain (non-table) operands.
+        OccursTableResolver.resolve(edges, program, knownPrograms, fieldLiterals);
         return edges;
     }
 
