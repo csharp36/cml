@@ -1,0 +1,19 @@
+{
+  "metrics": {
+    "programs": 44,
+    "static_edges": 34,
+    "dynamic_edges": 41,
+    "total_edges": 75,
+    "dynamic_share": 0.5466666666666666,
+    "max_chain_depth": 3,
+    "resources_at_or_above_threshold": 31
+  },
+  "recommendation": {
+    "decision": "PROCEED",
+    "signals": [
+      "dynamic dispatch 55% >= 15%",
+      "call depth 3 >= 3",
+      "shared-data fan 31 >= 5"
+    ]
+  }
+}
