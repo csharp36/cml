@@ -119,7 +119,7 @@ public final class ExtractorMain {
         for (Parsed prog : programs) {
             try {
                 ProgramEdges edges = new ProgramExtractor()
-                        .extract(prog.program, prog.programId, knownPrograms);
+                        .extract(prog.program, prog.programId, knownPrograms, prog.rawSource);
                 edges.copybooks = new ArrayList<>(CopyScanner.scan(prog.rawSource));
 
                 all.add(edges);

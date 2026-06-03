@@ -230,3 +230,62 @@ this field.
 Net: a strong, citable oracle for **call/XCTL reachability, copybook fan, file access, and transitive
 closures** (the differentiator strata), with `db2_tables` flagged as a defect and the txn-entry layer
 flagged as a known future stratum.
+
+---
+
+## Post-audit fixes (B6)
+
+The two named defects above were fixed under TDD (test first, confirmed fail→pass), the corpus
+outputs regenerated, and the results re-verified independently. The original findings above are left
+intact as the **as-found** record; this section documents the **as-fixed** state.
+
+### Defect 1 — `db2_tables` captured only the schema (regex excluded `.`)
+
+- **As found (§3):** `SQL_TABLE` = `(?i)\b(?:FROM|INTO|UPDATE|JOIN)\s+([A-Z0-9_]+)` stopped at the
+  dot in `FROM CARDDEMO.TRANSACTION_TYPE`, capturing only the schema `CARDDEMO` and merging
+  `TRANSACTION_TYPE` and `AUTHFRDS` into one bogus token.
+- **Fix:** added `.` to the captured character class →
+  `(?i)\b(?:FROM|INTO|UPDATE|JOIN)\s+([A-Z0-9_.]+)`. Host-var operands (`INTO :host`) still begin
+  with `:` and are dropped as before. Covered by `ProgramExtractorTest.capturesSchemaQualifiedDb2Tables`
+  (asserts `CARDDEMO.TRANSACTION_TYPE` and `CARDDEMO.AUTHFRDS` present, bare `CARDDEMO` absent).
+- **Re-verified (regenerated outputs):** `db2_tables` is now fully qualified —
+  `COTRTLIC` / `COTRTUPC` / `COBTUPDT` = `[CARDDEMO.TRANSACTION_TYPE]`, `COPAUS2C` =
+  `[CARDDEMO.AUTHFRDS]`. The corpus-wide DB2 table set is now exactly
+  `{CARDDEMO.AUTHFRDS, CARDDEMO.TRANSACTION_TYPE}` (was the single bogus `{CARDDEMO}`).
+  `oracle.json` `data_access` now keys on the real table names:
+  `CARDDEMO.TRANSACTION_TYPE → [COBTUPDT, COTRTLIC, COTRTUPC]`, `CARDDEMO.AUTHFRDS → [COPAUS2C]`;
+  no bare `CARDDEMO` key remains.
+
+### Defect 2 — a real `MOVE 'literal' TO field` was dropped (ProLeap parse omission)
+
+- **As found (§A.1 / Verdict):** `COPAUS0C.cbl:669 MOVE 'COSGN00C' TO CDEMO-TO-PROGRAM` did not
+  resolve, though the byte-identical statement in `COMEN01C` does — an apparent ProLeap statement-node
+  omission in that large IMS/DB2/MQ program under `ignoreSyntaxErrors=true`, so `handleMove` never saw
+  it. Net effect: the true edge `COPAUS0C → COSGN00C` was missing.
+- **Fix:** added a raw-source MOVE-literal backstop, `ProgramExtractor.scanMoveLiterals(String)` —
+  fixed-format aware (skips column-7 `*`/`/` comment lines, reads code columns 8–72), regex
+  `(?i)\bMOVE\s+'([^']+)'\s+TO\s+([A-Z0-9-]+)`, keyed `field(upper) → {literals}`. Its result is
+  **UNIONed** into (never replaces) the ASG-derived field→literals map, immediately before constant
+  propagation, using the same raw source already passed to `CopyScanner`. Purely additive — it only
+  adds correct field→literal mappings, so the OCCURS over-connect gate (keyed off `knownPrograms`) is
+  untouched. Covered by `ProgramExtractorTest.scanMoveLiteralsParsesFixedFormatAndIgnoresComments`
+  (asserts the literal is captured and a commented `* MOVE 'NOPE' TO X` is ignored).
+- **Re-verified (regenerated outputs):** `COPAUS0C.resolved_dynamic_xctl_link` now contains
+  `COSGN00C` and its `unresolved_dynamic_count` is `0` (was `1`). The corpus-wide
+  `unresolved_dynamic_count` total **dropped 3 → 2** (the two remaining are `COPAUS1C`'s genuine
+  variable→variable chains — `CDEMO-TO-PROGRAM` and `WS-PGM-AUTH-FRAUD` — which a single-hop
+  const-prop still correctly declines to resolve, per §A cases 2–3).
+
+### Over-connect gate — re-confirmed intact
+
+After both fixes, `COPAUS0C.resolved_dynamic_xctl_link = [COSGN00C]` and
+`COPAUS1C.resolved_dynamic_xctl_link = []` — neither fanned out to the menu list (zero overlap with
+the 11 menu-table program literals). The additive raw-MOVE union did not weaken the gate.
+
+### Re-verification totals (regenerated)
+
+- **44/44** programs still parse (`parsed=44 | failed=0`).
+- Resolved dynamic XCTL/LINK edges: **42** total (was 41); unresolved dynamic dispatches: **2** (was 3).
+- DB2 tables: `{CARDDEMO.AUTHFRDS, CARDDEMO.TRANSACTION_TYPE}` (fully qualified).
+- All extractor test suites green; `oracle.json` is deterministic (re-running `build_oracle.py`
+  yields a zero diff).

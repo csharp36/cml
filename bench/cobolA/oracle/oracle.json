@@ -55,7 +55,8 @@
     "CARD-INPUT",
     "CARD-RECORD",
     "CARD-XREF-RECORD",
-    "CARDDEMO",
+    "CARDDEMO.AUTHFRDS",
+    "CARDDEMO.TRANSACTION_TYPE",
     "CARDFILE-FILE",
     "CUST-FILE",
     "CUSTFILE-FILE",
@@ -265,7 +266,9 @@
     "COPAUA0C": [
       "MQOPEN"
     ],
-    "COPAUS0C": [],
+    "COPAUS0C": [
+      "COSGN00C"
+    ],
     "COPAUS1C": [],
     "COPAUS2C": [],
     "CORPT00C": [
@@ -414,9 +417,11 @@
     "CARD-XREF-RECORD": [
       "CBIMPORT"
     ],
-    "CARDDEMO": [
+    "CARDDEMO.AUTHFRDS": [
+      "COPAUS2C"
+    ],
+    "CARDDEMO.TRANSACTION_TYPE": [
       "COBTUPDT",
-      "COPAUS2C",
       "COTRTLIC",
       "COTRTUPC"
     ],
@@ -1054,7 +1059,9 @@
     "COPAUA0C": [
       "MQOPEN"
     ],
-    "COPAUS0C": [],
+    "COPAUS0C": [
+      "COSGN00C"
+    ],
     "COPAUS1C": [],
     "COPAUS2C": [],
     "CORPT00C": [

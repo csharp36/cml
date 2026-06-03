@@ -65,8 +65,14 @@ public final class ProgramExtractor {
     // of ' ( ) or whitespace, so a trailing subscript "(...)" and the closing ")" are not consumed.
     private static final Pattern CICS_XFER =
             Pattern.compile("(?i)(?:XCTL|LINK)\\s+PROGRAM\\(\\s*('?)([A-Z0-9-]+)");
+    // Include '.' so a schema-qualified table (CARDDEMO.TRANSACTION_TYPE) is captured whole rather
+    // than collapsed to its schema. Host vars (INTO :host) still start with ':' and are dropped below.
     private static final Pattern SQL_TABLE =
-            Pattern.compile("(?i)\\b(?:FROM|INTO|UPDATE|JOIN)\\s+([A-Z0-9_]+)");
+            Pattern.compile("(?i)\\b(?:FROM|INTO|UPDATE|JOIN)\\s+([A-Z0-9_.]+)");
+    // Raw-source MOVE-literal fallback (fixed-format): MOVE 'lit' TO field. Used to union with the
+    // ASG-derived MOVE literals so a parse-omitted MOVE is still folded into field->literals.
+    private static final Pattern MOVE_LITERAL =
+            Pattern.compile("(?i)\\bMOVE\\s+'([^']+)'\\s+TO\\s+([A-Z0-9-]+)");
     // ctx-text fallback for READ/WRITE: first token after the verb.
     private static final Pattern READ_OP = Pattern.compile("(?i)^READ\\s+([A-Z0-9-]+)");
     private static final Pattern WRITE_OP = Pattern.compile("(?i)^WRITE\\s+([A-Z0-9-]+)");
@@ -80,6 +86,18 @@ public final class ProgramExtractor {
     }
 
     public ProgramEdges extract(Program program, String programId, Set<String> knownPrograms) {
+        return extract(program, programId, knownPrograms, null);
+    }
+
+    /**
+     * @param rawSource the program's raw fixed-format source (the same string passed to
+     *                  {@link CopyScanner}). When non-null, {@code MOVE 'literal' TO field}
+     *                  statements scanned from it are UNIONed into the field→literals map, recovering
+     *                  any MOVE that ProLeap dropped under {@code ignoreSyntaxErrors}. Pass {@code null}
+     *                  to skip the raw fallback (ASG path only).
+     */
+    public ProgramEdges extract(Program program, String programId, Set<String> knownPrograms,
+                                String rawSource) {
         ProgramEdges edges = new ProgramEdges();
         edges.programId = programId;
 
@@ -132,6 +150,19 @@ public final class ProgramExtractor {
         edges.filesWritten = new ArrayList<>(filesWritten);
         edges.db2Tables = new ArrayList<>(db2Tables);
 
+        // B6: raw-source MOVE-literal fallback. UNION (never replace) the literals scanned directly
+        // from the fixed-format source into the ASG-derived field→literals map. This recovers a
+        // MOVE 'literal' TO field that ProLeap dropped under ignoreSyntaxErrors (observed on the large
+        // IMS/MQ program COPAUS0C, whose l.669 MOVE 'COSGN00C' TO CDEMO-TO-PROGRAM was omitted). It is
+        // purely additive — only correct field→literal mappings are added — so the OCCURS over-connect
+        // gate (which is keyed off knownPrograms) is unaffected.
+        if (rawSource != null) {
+            Map<String, Set<String>> rawMoves = scanMoveLiterals(rawSource);
+            for (Map.Entry<String, Set<String>> e : rawMoves.entrySet()) {
+                fieldLiterals.computeIfAbsent(e.getKey(), k -> new LinkedHashSet<>()).addAll(e.getValue());
+            }
+        }
+
         // B2: resolve dynamic CALL / XCTL identifiers to concrete program names via the
         // field -> literals map built above, and count the truly-unresolvable operands.
         new ConstantPropagator().resolve(edges, fieldLiterals);
@@ -142,6 +173,58 @@ public final class ProgramExtractor {
         // over-connecting plain (non-table) operands.
         OccursTableResolver.resolve(edges, program, knownPrograms, fieldLiterals);
         return edges;
+    }
+
+    /**
+     * Raw-source fallback for the constant propagator: scan fixed-format COBOL text for
+     * {@code MOVE 'literal' TO field} statements and return {@code field(upper) -> {literals}}.
+     *
+     * <p>This is a backstop for ProLeap parse omissions — when {@code ignoreSyntaxErrors=true} on a
+     * large IMS/MQ program drops a statement node, {@code handleMove} never sees that MOVE, so the
+     * literal is missing from the ASG-derived map. Scanning the raw source recovers it. The result is
+     * always UNIONed with (never replaces) the ASG path, so it can only add correct field→literal
+     * mappings.
+     *
+     * <p>Fixed-format aware: column 7 (1-based) is the indicator area — a {@code *} or {@code /} there
+     * marks a full-line comment, which is skipped; code lives in columns 8–72 (sequence area 1–6 and
+     * the col-73+ identification area are ignored). The regex permits a MOVE that wraps onto a
+     * continuation line within the code area because matching is done on the concatenated code text.
+     */
+    public static Map<String, Set<String>> scanMoveLiterals(String rawSource) {
+        Map<String, Set<String>> out = new HashMap<>();
+        if (rawSource == null || rawSource.isEmpty()) {
+            return out;
+        }
+        StringBuilder code = new StringBuilder();
+        for (String line : rawSource.split("\n", -1)) {
+            // Strip a trailing CR (CRLF sources).
+            if (!line.isEmpty() && line.charAt(line.length() - 1) == '\r') {
+                line = line.substring(0, line.length() - 1);
+            }
+            // Column 7 (index 6) is the indicator area; '*' or '/' there is a comment line.
+            if (line.length() >= 7) {
+                char indicator = line.charAt(6);
+                if (indicator == '*' || indicator == '/') {
+                    continue;
+                }
+            }
+            // Code area is columns 8–72 (index 7..71). Lines shorter than that contribute what they have.
+            if (line.length() > 7) {
+                int end = Math.min(line.length(), 72);
+                code.append(line, 7, end);
+            }
+            code.append(' ');
+        }
+        Matcher m = MOVE_LITERAL.matcher(code);
+        while (m.find()) {
+            String literal = m.group(1);
+            String field = m.group(2);
+            if (field != null && literal != null && !literal.isEmpty()) {
+                out.computeIfAbsent(field.toUpperCase(java.util.Locale.ROOT), k -> new LinkedHashSet<>())
+                        .add(literal);
+            }
+        }
+        return out;
     }
 
     // ---- MOVE (constant propagation source) -----------------------------------

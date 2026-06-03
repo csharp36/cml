@@ -276,7 +276,7 @@
   "copybooks" : [ ],
   "files_read" : [ "TR-RECORD" ],
   "files_written" : [ ],
-  "db2_tables" : [ "CARDDEMO" ],
+  "db2_tables" : [ "CARDDEMO.TRANSACTION_TYPE" ],
   "cics_txn_entry" : [ ]
 }, {
   "program_id" : "COCRDLIC",
@@ -369,8 +369,8 @@
   "resolved_dynamic_calls" : [ ],
   "static_xctl_link" : [ ],
   "dynamic_xctl_idents" : [ "CDEMO-TO-PROGRAM" ],
-  "resolved_dynamic_xctl_link" : [ ],
-  "unresolved_dynamic_count" : 1,
+  "resolved_dynamic_xctl_link" : [ "COSGN00C" ],
+  "unresolved_dynamic_count" : 0,
   "copybooks" : [ "COCOM01Y", "COPAU00", "COTTL01Y", "CSDAT01Y", "CSMSG01Y", "CSMSG02Y", "CVACT01Y", "CVACT02Y", "CVACT03Y", "CVCUS01Y", "CIPAUSMY", "CIPAUDTY", "DFHAID", "DFHBMSCA" ],
   "files_read" : [ ],
   "files_written" : [ ],
@@ -402,7 +402,7 @@
   "copybooks" : [ "CIPAUDTY" ],
   "files_read" : [ ],
   "files_written" : [ ],
-  "db2_tables" : [ "CARDDEMO" ],
+  "db2_tables" : [ "CARDDEMO.AUTHFRDS" ],
   "cics_txn_entry" : [ ]
 }, {
   "program_id" : "CORPT00C",
@@ -486,7 +486,7 @@
   "copybooks" : [ "CVCRD01Y", "COCOM01Y", "DFHBMSCA", "DFHAID", "COTTL01Y", "COTRTLI", "CSDAT01Y", "CSMSG01Y", "CSUSR01Y", "CVACT02Y" ],
   "files_read" : [ ],
   "files_written" : [ ],
-  "db2_tables" : [ "CARDDEMO" ],
+  "db2_tables" : [ "CARDDEMO.TRANSACTION_TYPE" ],
   "cics_txn_entry" : [ ]
 }, {
   "program_id" : "COTRTUPC",
@@ -500,7 +500,7 @@
   "copybooks" : [ "CVCRD01Y", "DFHBMSCA", "DFHAID", "COTTL01Y", "COTRTUP", "CSDAT01Y", "CSMSG01Y", "CSMSG02Y", "CSUSR01Y", "COCOM01Y", "CSSETATY" ],
   "files_read" : [ ],
   "files_written" : [ ],
-  "db2_tables" : [ "CARDDEMO" ],
+  "db2_tables" : [ "CARDDEMO.TRANSACTION_TYPE" ],
   "cics_txn_entry" : [ ]
 }, {
   "program_id" : "COUSR00C",
