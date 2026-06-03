@@ -203,7 +203,7 @@ Run:
 source bench/arenaA/pin.env
 ./scripts/scip-upload.sh --server "$SERVER" --repo hazelcast --api-key "$HZ_SCIP_KEY" \
   --scip-file "$PIN_SCIP" --splitter-jar build/libs/indexer.jar \
-  --git-sha "$PIN_REF"
+  --sha "$PIN_REF" --fail-on-error
 ```
 Expected: terminal JSON `{"repo":"hazelcast","sha":"7af6ddea...","symbols":>0,"relationships":>0,...}`.
 
