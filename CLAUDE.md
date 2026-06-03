@@ -6,6 +6,15 @@ A Java 21+ MCP server that maintains a PostgreSQL-backed index of source code re
 
 Designed for large financial institutions: pluggable enterprise auth, stateless cloud deployment, multi-instance scaling.
 
+**What it's measurably good at (don't oversell it).** Controlled benchmarks vs a strong `grep`
+baseline (Hazelcast, ~2M LOC) found the index's real, proven edge is **type-resolved reachability** —
+"list every concrete type that is-a `X`, transitively" (all implementers / subtype tree), answered
+via SCIP-backed `get_type_hierarchy` in **one query at recall 0.97 / F1 0.88**, vs iterative `grep`
+at **0.32 / 0.32 over ~102 queries** (validated against an independent compiled-bytecode oracle; the
+win is completeness, not precision). For *implementing features* and *general code discovery*, `grep`
+ties or wins and is cheaper — so pitch CML as a **type-resolution oracle that complements `grep`**,
+not "faster code search." Evidence: `docs/superpowers/results/` (3 writeups) + `bench/arenaA/`.
+
 **Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter structural parsing via tree-sitter-ng (Java, Python, TypeScript/JavaScript, Go, C), SCIP protobuf for type-resolved semantics, MCP protocol (stdio + Streamable HTTP)
 
 **Design spec:** `docs/superpowers/specs/2026-05-25-source-code-indexer-mcp-design.md`
