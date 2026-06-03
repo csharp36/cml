@@ -12,7 +12,7 @@ reproducible from `bench/arenaA/` on `main` of [github.com/csharp36/cml](https:/
 
 I built a [PostgreSQL-backed semantic code index](https://github.com/csharp36/cml) and spent two
 articles failing to show it beats plain `grep`. [Article 1](https://medium.com/@csharp36/does-a-semantic-code-index-make-claude-code-a-better-engineer-a-controlled-experiment-c90b193204ee)
-(implement a real feature): the index cost more and we'd measured the wrong phase. [Article 2](https://medium.com/@csharp36)
+(implement a real feature): the index cost more and we'd measured the wrong phase. [Article 2](https://medium.com/@csharp36/discovery-benchmark-semantic-index-vs-grep-find-76ee87ce12c1)
 (locate a PR's change surface): a tie, and `grep` was cheaper. The honest running verdict was *"nice
 project, not a clear win."*
 
