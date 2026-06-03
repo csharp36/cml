@@ -245,7 +245,11 @@ _XCTL_LINK = re.compile(
     re.I | re.S,
 )
 _COPY = re.compile(r"\bCOPY\s+([A-Z0-9][A-Z0-9-]*)", re.I)
-_FILE_OP = re.compile(r"\b(?:READ|WRITE|REWRITE|DELETE|START)\s+([A-Z0-9][A-Z0-9-]*)", re.I)
+# (?<![A-Za-z0-9-]) stops READ matching the tail of hyphenated identifiers like END-READ.
+# Phase 0 crude scope: bare COBOL file verbs only — CICS file I/O (EXEC CICS READ FILE(...))
+# is NOT captured, so file_ops under-counts CICS programs. PHASE0-recon.md must flag this.
+_FILE_OP = re.compile(
+    r"(?<![A-Za-z0-9-])(?:READ|WRITE|REWRITE|DELETE|START)\s+([A-Z0-9][A-Z0-9-]*)", re.I)
 _SQL = re.compile(r"\bEXEC\s+SQL\b", re.I)
 _CICS = re.compile(r"\bEXEC\s+CICS\b", re.I)
 
@@ -549,7 +553,12 @@ def _write_reports(here: pathlib.Path, m: dict, rec: dict) -> None:
     lines += [f"- {s}" for s in rec["signals"]] or ["- (none — corpus is flat/static)"]
     lines += ["", "## Interpretation", "",
               "PROCEED → a call/data-coupling oracle could plausibly beat grep; build Phase 1.",
-              "STOP → grep is sufficient for CardDemo-scale decomposition; verdict: **not a fit**."]
+              "STOP → grep is sufficient for CardDemo-scale decomposition; verdict: **not a fit**.",
+              "", "## Known Phase 0 limitation", "",
+              "`file_ops` (and the shared-data fan derived from it) captures only bare COBOL "
+              "file verbs; CICS file I/O (`EXEC CICS READ FILE(...)`) is NOT captured, so the "
+              "coupling metric under-counts the online/CICS programs. Coupling here is a lower "
+              "bound — Phase 1 (ProLeap) closes this."]
     (here / "PHASE0-recon.md").write_text("\n".join(lines) + "\n")
 
 
