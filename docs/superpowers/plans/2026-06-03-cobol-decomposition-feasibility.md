@@ -27,7 +27,7 @@ bench/cobolA/
     test_graph.py
     fixtures/
       progA.cbl              # known-count fixture: static+dynamic CALL, XCTL literal+var, COPY
-      chain.cbl             # A→B→C static chain fixture for depth
+      chain.cbl             # CHAINB→CHAINC static chain fixture (driver-aggregation test)
   run_recon.py               # driver: glob corpus → aggregate → recon.json + PHASE0-recon.md
   recon.json                 # committed machine-readable recon output
   PHASE0-recon.md            # committed human-readable verdict + gate recommendation
@@ -178,6 +178,8 @@ git commit -m "bench(cobolA): fixed-format COBOL line normalization"
 
 ## Task 3: Per-program fact extraction
 
+> **Implementation note (post-review):** the committed `extract.py` supersedes the code block below. It adds a module-level `_STRLIT` regex and a `strip_literals` mode to `_code_text`, and `extract_program_facts` runs the dynamic-CALL and file-op passes over the string-literal-blanked text (`code_nostr`) — eliminating false positives from `CALL`/`START` inside `DISPLAY` literals. The `_CALL_VAR` lookbehind below is the final form. See commit `95a9d0a`.
+
 Extract the edges and coupling signals that matter for decomposition. Crucially this includes **CICS `XCTL`/`LINK`** (CardDemo's online programs transfer control via `EXEC CICS XCTL PROGRAM(...)`, frequently with the target in a *variable* — the dynamic dispatch grep cannot resolve), not just COBOL `CALL`.
 
 **Files:**
@@ -239,7 +241,7 @@ Append to `bench/cobolA/recon/extract.py`:
 ```python
 _PROGRAM_ID = re.compile(r"\bPROGRAM-ID\.\s+([A-Z0-9][A-Z0-9-]*)", re.I)
 _CALL_LIT = re.compile(r"\bCALL\s+['\"]([A-Z0-9][A-Z0-9-]*)['\"]", re.I)
-_CALL_VAR = re.compile(r"\bCALL\s+(?!['\"])([A-Z0-9][A-Z0-9-]*)", re.I)
+_CALL_VAR = re.compile(r"(?<![A-Za-z0-9-])CALL\s+(?!['\"])([A-Z0-9][A-Z0-9-]*)", re.I)
 _XCTL_LINK = re.compile(
     r"\bEXEC\s+CICS\s+(?:XCTL|LINK)\b[^.]*?\bPROGRAM\s*\(\s*(['\"]?)([A-Z0-9][A-Z0-9-]*)\1?",
     re.I | re.S,
