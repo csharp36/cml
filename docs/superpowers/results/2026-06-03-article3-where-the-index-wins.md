@@ -49,18 +49,24 @@ answer a structural question:
    `class C extends AbstractB` and `AbstractB implements I` means `C` is an `I`, across files and
    modules, through generics, the way the compiler does.
 
-SCIP is the entire reason the project exists. And when I went to test it, **the SCIP tables were
-empty.** They'd been truncated after an earlier session, and — the detail that matters — the CI step
-that was supposed to upload SCIP had silently failed because it couldn't reach the indexer. So both
-prior benchmarks measured the index *without* its differentiator. Worse, the one structural tool that
-did have data, `find_implementations`, turned out to be a flat, direct-only lookup:
+SCIP is the entire reason the project exists. So before running anything new, I went back and read the
+saved tool-call logs from the first two experiments to see how the index had actually been used. The
+answer was stark: **across both runs, the type-resolution tools were called exactly zero times.**
+`get_type_hierarchy` and `get_symbol_references` — the only tools that touch the SCIP layer — never
+fired once. Those tasks (implement a PR, locate a change surface) never posed a transitive type
+question, so the agent never reached for them, and the index's whole differentiator sat unmeasured.
+
+Worse, the one structural tool that *did* get used, `find_implementations`, turned out to be a flat,
+direct-only lookup:
 
 ```sql
 WHERE related_name = :typeName AND kind = 'implements'
 ```
 
 That is, almost exactly what `grep "implements X"` does. No wonder the index kept tying grep: **for
-structural questions, it had been *being* grep.** The fair fight had never happened.
+structural questions, it had been *being* grep.** The fair fight had never happened. (By the time I
+came to test the type layer head-on, the SCIP tables had also been truncated in teardown — but that's
+incidental: even fully populated, nothing in the first two experiments would have queried them.)
 
 So before I could run the experiment, the experiment forced two fixes (this keeps happening — Article
 2's harness surfaced a real overlay bug too):
@@ -69,8 +75,9 @@ So before I could run the experiment, the experiment forced two fixes (this keep
   the `implements ∪ extends` edges it already stored). On `DataSerializable`, direct lookup returned
   **89** implementers; the transitive walk returned **989**.
 - I fixed the multi-part SCIP upload so a 507 MB index could actually land. It now does:
-  **232,101 symbols / 107,762 relationships.** The CI-reachability failure that had kept SCIP empty
-  is the recurring villain of this whole series, and it's finally dead.
+  **232,101 symbols / 107,762 relationships.** Getting a type-resolved index of this size to upload at
+  all had been its own running battle across the series; with the multi-part path fixed, it's finally
+  reliable.
 
 Only now were all three approaches actually on the board.
 
@@ -209,9 +216,9 @@ I've spent two articles refusing to oversell; I'm not going to start now.
 - **`grep`-iterative is one baseline.** A cleverer developer might prune the BFS. But the recall
   ceiling is structural: text can't resolve types, so a smarter grep strategy trades cost for the
   same wall.
-- **SCIP has to actually be populated.** The entire result rests on the upload path working — the
-  exact thing that failed silently for two articles. The capability is only as real as the pipeline
-  that feeds it.
+- **SCIP has to actually be populated.** The entire result rests on the upload path working, and a
+  type-resolved index this large pushed that path hard enough to need fixing before the experiment
+  could run. The capability is only as real as the pipeline that feeds it.
 
 ## 7. So: is the baby ugly?
 
