@@ -18,6 +18,19 @@ def parse_javap_decl(line):
                     supers.append(t)
     return fqn, supers
 
+def normalize_scip_symbol(sym):
+    """SCIP symbol -> javap-style binary FQN.
+    'semanticdb maven .../hazelcast 5.8 com/hazelcast/x/Outer#Inner#' -> 'com.hazelcast.x.Outer$Inner'."""
+    tok = sym.strip().split(' ')[-1]      # descriptor: com/hazelcast/x/Outer#Inner#
+    tok = tok.rstrip('#.')                 # drop trailing type/term markers
+    return tok.replace('#', '$').replace('/', '.')
+
+
+def simple_name(fqn):
+    """Innermost simple name: 'com.x.Outer$Inner' -> 'Inner'."""
+    return fqn.split('.')[-1].split('$')[-1]
+
+
 def transitive_closure(child_to_parents, target):
     parent_to_children = defaultdict(set)
     for c, ps in child_to_parents.items():
@@ -35,7 +48,7 @@ def build_graph_from_jar(jar_path, javap="javap"):
     names = []
     with zipfile.ZipFile(jar_path) as z:
         for n in z.namelist():
-            if n.endswith('.class') and '$' not in n:
+            if n.endswith('.class'):                       # include inner/nested classes ($)
                 names.append(n[:-6].replace('/', '.'))
     graph = {}
     for i in range(0, len(names), 200):
@@ -54,7 +67,7 @@ if __name__ == "__main__":
     graph = build_graph_from_jar(jar)
     simple = defaultdict(set)
     for fqn in graph:
-        simple[fqn.split('.')[-1]].add(fqn)
+        simple[simple_name(fqn)].add(fqn)
     out = {"graph": graph, "simple_name_index": {k: sorted(v) for k, v in simple.items()}}
     json.dump(out, open("oracle.json", "w"))
     print(f"types={len(graph)} colliding_simple_names="
