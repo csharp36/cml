@@ -21,11 +21,10 @@ exercised: **type-resolved reachability** — *"list every concrete class that i
 through inheritance."* Across 12 such questions on a 2-million-line codebase, scored against an
 **independent compiled-bytecode oracle**:
 
-| arm | how it works | recall | F1 | queries per question |
-|---|---|---|---|---|
-| **semantic index (SCIP)** | compiler-grade type graph | **0.97** | **0.88** | **1** |
-| tree-sitter index (transitive) | parsed `implements`/`extends`, name-matched | 0.50 | 0.50 | 1 |
-| `grep`-iterative | BFS of `grep` over source | 0.32 | 0.32 | **102** (max 481) |
+![Type-resolved reachability across 12 questions, scored vs the bytecode oracle: semantic index
+(SCIP), a compiler-grade type graph, hits recall 0.97 / F1 0.88 in 1 query; tree-sitter (transitive),
+parsing implements/extends, gets 0.50 / 0.50 in 1 query; grep-iterative, a BFS of grep over source,
+gets 0.32 / 0.32 over 102 queries (max 481). A clean grep < tree-sitter < SCIP result.](article3-table-tldr.jpeg)
 
 A clean, monotone result: **grep < tree-sitter < SCIP.** The index roughly **triples grep's recall
 at one-hundredth of the calls**, and wins on *every* question and *both* task flavors — including the
@@ -153,18 +152,16 @@ the compiler's own view of a 989-type hierarchy to within 2%, you can trust the 
 
 Means across the 12 questions, scored against bytecode truth:
 
-| arm | precision | recall | **F1** | calls / question |
-|---|---|---|---|---|
-| **SCIP** | 0.861 | **0.972** | **0.877** | 1 |
-| tree-sitter (CTE) | 0.666 | 0.496 | 0.499 | 1 |
-| `grep`-iterative | 0.650 | 0.316 | 0.324 | 102 (max 481) |
+![Means across 12 questions, scored vs bytecode truth: SCIP precision 0.861 / recall 0.972 / F1 0.877
+in 1 call; tree-sitter (CTE) 0.666 / 0.496 / 0.499 in 1 call; grep-iterative 0.650 / 0.316 / 0.324
+over 102 calls (max 481). All three arms are similarly precise; SCIP wins on recall and on
+cost.](article3-table-result.jpeg)
 
 Broken out by task flavor:
 
-| stratum | `grep` | tree-sitter | SCIP |
-|---|---|---|---|
-| structural (8) | 0.245 | 0.379 | **0.828** |
-| lexical (4) | 0.482 | 0.741 | **0.975** |
+![F1 by task flavor: on the 8 structural questions, grep 0.245 / tree-sitter 0.379 / SCIP 0.828; on
+the 4 lexical controls, grep 0.482 / tree-sitter 0.741 / SCIP 0.975. SCIP wins both strata — including
+the lexical controls that should favor grep.](article3-table-strata.jpeg)
 
 ![Two bar panels, recall and F1, across the three arms. grep-iterative is lowest (recall 0.32, F1
 0.32), tree-sitter in the middle (0.50 / 0.50), SCIP far ahead (recall 0.97, F1 0.88) — a clean
