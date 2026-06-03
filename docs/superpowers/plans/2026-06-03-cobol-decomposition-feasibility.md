@@ -28,7 +28,7 @@ bench/cobolA/
     fixtures/
       progA.cbl              # known-count fixture: static+dynamic CALL, XCTL literal+var, COPY
       chain.cbl             # A→B→C static chain fixture for depth
-  recon.py                   # driver: glob corpus → aggregate → recon.json + PHASE0-recon.md
+  run_recon.py               # driver: glob corpus → aggregate → recon.json + PHASE0-recon.md
   recon.json                 # committed machine-readable recon output
   PHASE0-recon.md            # committed human-readable verdict + gate recommendation
 ```
@@ -435,7 +435,7 @@ git commit -m "bench(cobolA): call-graph depth + shared-data coupling metrics"
 Ties the pieces together over the real corpus, computes the three gate numbers, and writes both `recon.json` (machine-readable) and `PHASE0-recon.md` (human verdict) with a recommendation against the pre-registered gate rule.
 
 **Files:**
-- Create: `bench/cobolA/recon.py`
+- Create: `bench/cobolA/run_recon.py`
 - Test: `bench/cobolA/recon/test_driver.py`
 
 - [ ] **Step 1: Write the failing test (drives the aggregation logic on fixtures)**
@@ -443,7 +443,7 @@ Ties the pieces together over the real corpus, computes the three gate numbers, 
 `bench/cobolA/recon/test_driver.py`:
 ```python
 import pathlib
-from recon import aggregate_facts, gate_metrics, gate_recommendation
+from run_recon import aggregate_facts, gate_metrics, gate_recommendation
 
 FIX = pathlib.Path(__file__).parent / "fixtures"
 
@@ -470,16 +470,16 @@ def test_gate_recommendation_stops_when_flat_and_static():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `cd bench/cobolA && python -m pytest recon/test_driver.py -v`
-Expected: FAIL (`ImportError` — `recon.py` has no such functions).
+Expected: FAIL (`ImportError` — `run_recon.py` has no such functions).
 
 - [ ] **Step 3: Write minimal implementation**
 
-`bench/cobolA/recon.py`:
+`bench/cobolA/run_recon.py`:
 ```python
 #!/usr/bin/env python3
 """Phase 0 recon driver: characterize a COBOL corpus and recommend the gate decision.
 
-Usage: python recon.py corpus/   (writes recon.json + PHASE0-recon.md next to this file)
+Usage: python run_recon.py corpus/   (writes recon.json + PHASE0-recon.md next to this file)
 """
 import json
 import pathlib
@@ -580,7 +580,7 @@ Expected: PASS (all extract/graph/driver tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add bench/cobolA/recon.py bench/cobolA/recon/test_driver.py
+git add bench/cobolA/run_recon.py bench/cobolA/recon/test_driver.py
 git commit -m "bench(cobolA): recon driver — gate metrics + PHASE0-recon report"
 ```
 
@@ -598,7 +598,7 @@ Expected: corpus directory exists.
 
 - [ ] **Step 2: Run the recon over the real corpus**
 
-Run: `cd bench/cobolA && python recon.py corpus/`
+Run: `cd bench/cobolA && python run_recon.py corpus/`
 Expected: prints a metrics+recommendation JSON; writes `recon.json` and `PHASE0-recon.md`. Sanity-check that `programs` is in the expected dozens, not 0 (0 ⇒ glob/extension bug — confirm CardDemo's COBOL really lives under `*.cbl`).
 
 - [ ] **Step 3: Eyeball-validate against grep (cheap cross-check)**
@@ -661,5 +661,5 @@ These are intentionally **not** broken into executable steps yet. Detailed plann
 ## Self-Review notes
 
 - **Spec coverage:** Phase 0 (recon gate) fully implemented as Tasks 1–6 + GATE; Phases 1–4 of the spec are represented as a gated roadmap, matching the spec's explicit de-risking design (Phase 0 may end the study). The make-vs-buy caveat and pre-registered thresholds live in the spec and are echoed at the GATE and Phase 3 roadmap.
-- **Type consistency:** fact dict keys (`static_calls`, `dynamic_call_count`, `static_xctl_link`, `dynamic_xctl_link_count`, `copybooks`, `file_ops`, `uses_sql`, `uses_cics`, `program_id`) are identical across `extract.py`, `graph.py`, `recon.py`, and every test. Metric keys (`dynamic_share`, `max_chain_depth`, `resources_at_or_above_threshold`) match between `gate_metrics`, `gate_recommendation`, and `_write_reports`.
+- **Type consistency:** fact dict keys (`static_calls`, `dynamic_call_count`, `static_xctl_link`, `dynamic_xctl_link_count`, `copybooks`, `file_ops`, `uses_sql`, `uses_cics`, `program_id`) are identical across `extract.py`, `graph.py`, `run_recon.py`, and every test. Metric keys (`dynamic_share`, `max_chain_depth`, `resources_at_or_above_threshold`) match between `gate_metrics`, `gate_recommendation`, and `_write_reports`.
 - **No placeholders in Phase 0 tasks:** every code/test step contains complete, runnable content. Phase 1–4 are explicitly labeled deferred roadmap, not TBD steps.
