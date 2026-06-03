@@ -6,7 +6,7 @@
 
 **Architecture:** A standalone Gradle (Kotlin DSL) Java application under `bench/cobolA/oracle/extractor/` depends on `io.github.uwol:proleap-cobol-parser:4.0.0`. It parses each CardDemo program (`CobolSourceFormatEnum.FIXED`, `ignoreSyntaxErrors(true)`, copybook dirs configured), walks the ASG to emit **raw edges** (CALL static/dynamic, CICS XCTL/LINK targets from `getExecCicsText()`, file SELECT/READ/WRITE, EXEC SQL tables, CICS txn entry points) plus a constant-propagation pass that resolves `MOVE 'literal' TO ws-field` → `XCTL PROGRAM(ws-field)` to concrete program names. A Python `oracle/build_oracle.py` consumes the raw-edges JSON and precomputes the query-answer structures (transitive closures, access sets, coupling sets, copybook fan-out) into `oracle/oracle.json`, mirroring `bench/arenaA/oracle/oracle.json`. ProLeap is deliberately chosen because it is **independent of tree-sitter** (reserved for a future Approach B), keeping the oracle honest.
 
-**Tech Stack:** Java 21 (ProLeap is Java-17 bytecode, runs on 21; ANTLR 4.7.2 bundled), Gradle Kotlin DSL (application plugin), Jackson for JSON, Python 3.13 + pytest for `build_oracle.py`. Corpus: CardDemo pinned at `59cc6c2` (already cloned in Phase 0 at `bench/cobolA/corpus/`).
+**Tech Stack:** Java 21 (ProLeap `com.github.uwol:proleap-cobol-parser:v2.4.0` via **JitPack** — it is NOT published to Maven Central; the unreleased `4.0.0` pom on `main` misled the initial research. ANTLR runtime bundled), Gradle Kotlin DSL (application plugin), Jackson for JSON, Python 3.13 + pytest for `build_oracle.py`. Corpus: CardDemo pinned at `59cc6c2` (already cloned in Phase 0 at `bench/cobolA/corpus/`).
 
 **Spec:** `docs/superpowers/specs/2026-06-03-cobol-decomposition-feasibility-design.md` (Phase 1 section)
 **Upstream research:** ProLeap API confirmed — `CobolParserRunnerImpl().analyzeFile(file, CobolParserParamsImpl)` → `Program` → `getCompilationUnit(name)` → `getProgramUnit()` → `getProcedureDivision().getStatements()`. CICS/SQL exposed as opaque text via `ExecCicsStatement.getExecCicsText()` / `ExecSqlStatement.getExecSqlText()`. `COPY` is erased by the preprocessor → extract from raw source. Nested statements require `CobolBaseVisitor` + `program.getASGElementRegistry().getASGElement(ctx)`.
@@ -79,9 +79,12 @@ plugins {
     application
     java
 }
-repositories { mavenCentral() }
+repositories {
+    mavenCentral()
+    maven { url = uri("https://jitpack.io") }   // ProLeap is only on JitPack
+}
 dependencies {
-    implementation("io.github.uwol:proleap-cobol-parser:4.0.0")
+    implementation("com.github.uwol:proleap-cobol-parser:v2.4.0")  // JitPack; NOT on Maven Central
     implementation("com.fasterxml.jackson.core:jackson-databind:2.17.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
 }

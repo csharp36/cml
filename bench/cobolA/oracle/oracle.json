@@ -1,0 +1,1121 @@
+{
+  "programs": [
+    "CBACT01C",
+    "CBACT02C",
+    "CBACT03C",
+    "CBACT04C",
+    "CBCUS01C",
+    "CBEXPORT",
+    "CBIMPORT",
+    "CBPAUP0C",
+    "CBSTM03A",
+    "CBSTM03B",
+    "CBTRN01C",
+    "CBTRN02C",
+    "CBTRN03C",
+    "COACCT01",
+    "COACTUPC",
+    "COACTVWC",
+    "COADM01C",
+    "COBIL00C",
+    "COBSWAIT",
+    "COBTUPDT",
+    "COCRDLIC",
+    "COCRDSLC",
+    "COCRDUPC",
+    "CODATE01",
+    "COMEN01C",
+    "COPAUA0C",
+    "COPAUS0C",
+    "COPAUS1C",
+    "COPAUS2C",
+    "CORPT00C",
+    "COSGN00C",
+    "COTRN00C",
+    "COTRN01C",
+    "COTRN02C",
+    "COTRTLIC",
+    "COTRTUPC",
+    "COUSR00C",
+    "COUSR01C",
+    "COUSR02C",
+    "COUSR03C",
+    "CSUTLDTC",
+    "DBUNLDGS",
+    "PAUDBLOD",
+    "PAUDBUNL"
+  ],
+  "resources": [
+    "ACCOUNT-FILE",
+    "ACCOUNT-INPUT",
+    "ACCOUNT-RECORD",
+    "ACCT-FILE",
+    "ACCTFILE-FILE",
+    "ARR-ARRAY-REC",
+    "CARD-INPUT",
+    "CARD-RECORD",
+    "CARD-XREF-RECORD",
+    "CARDDEMO.AUTHFRDS",
+    "CARDDEMO.TRANSACTION_TYPE",
+    "CARDFILE-FILE",
+    "CUST-FILE",
+    "CUSTFILE-FILE",
+    "CUSTOMER-INPUT",
+    "CUSTOMER-RECORD",
+    "DALYTRAN-FILE",
+    "DATE-PARMS-FILE",
+    "DISCGRP-FILE",
+    "ERROR-OUTPUT-RECORD",
+    "EXPORT-INPUT",
+    "EXPORT-OUTPUT-RECORD",
+    "FD-HTMLFILE-REC",
+    "FD-REJS-RECORD",
+    "FD-REPTFILE-REC",
+    "FD-STMTFILE-REC",
+    "FD-TRAN-CAT-BAL-RECORD",
+    "FD-TRANFILE-REC",
+    "INFILE1",
+    "INFILE2",
+    "OPFIL1-REC",
+    "OPFIL2-REC",
+    "OUT-ACCT-REC",
+    "TCATBAL-FILE",
+    "TR-RECORD",
+    "TRAN-RECORD",
+    "TRANCATG-FILE",
+    "TRANSACT-FILE",
+    "TRANSACTION-INPUT",
+    "TRANTYPE-FILE",
+    "TRNX-FILE",
+    "VBR-REC",
+    "XREF-FILE",
+    "XREF-INPUT",
+    "XREFFILE-FILE"
+  ],
+  "copybooks": [
+    "CCPAUERY",
+    "CCPAURLY",
+    "CCPAURQY",
+    "CIPAUDTY",
+    "CIPAUSMY",
+    "CMQGMOV",
+    "CMQMDV",
+    "CMQODV",
+    "CMQPMOV",
+    "CMQTML",
+    "CMQV",
+    "COACTUP",
+    "COACTVW",
+    "COADM01",
+    "COADM02Y",
+    "COBIL00",
+    "COCOM01Y",
+    "COCRDLI",
+    "COCRDSL",
+    "COCRDUP",
+    "CODATECN",
+    "COMEN01",
+    "COMEN02Y",
+    "COPAU00",
+    "COPAU01",
+    "CORPT00",
+    "COSGN00",
+    "COSTM01",
+    "COTRN00",
+    "COTRN01",
+    "COTRN02",
+    "COTRTLI",
+    "COTRTUP",
+    "COTTL01Y",
+    "COUSR00",
+    "COUSR01",
+    "COUSR02",
+    "COUSR03",
+    "CSDAT01Y",
+    "CSLKPCDY",
+    "CSMSG01Y",
+    "CSMSG02Y",
+    "CSSETATY",
+    "CSUSR01Y",
+    "CSUTLDPY",
+    "CUSTREC",
+    "CVACT01Y",
+    "CVACT02Y",
+    "CVACT03Y",
+    "CVCRD01Y",
+    "CVCUS01Y",
+    "CVEXPORT",
+    "CVTRA01Y",
+    "CVTRA02Y",
+    "CVTRA03Y",
+    "CVTRA04Y",
+    "CVTRA05Y",
+    "CVTRA06Y",
+    "CVTRA07Y",
+    "DFHAID",
+    "DFHBMSCA",
+    "IMSFUNCS",
+    "PADFLPCB",
+    "PASFLPCB",
+    "PAUTBPCB",
+    "REPLACING"
+  ],
+  "transitive_call_closure": {
+    "CBACT01C": [
+      "CEE3ABD",
+      "COBDATFT"
+    ],
+    "CBACT02C": [
+      "CEE3ABD"
+    ],
+    "CBACT03C": [
+      "CEE3ABD"
+    ],
+    "CBACT04C": [
+      "CEE3ABD"
+    ],
+    "CBCUS01C": [
+      "CEE3ABD"
+    ],
+    "CBEXPORT": [
+      "CEE3ABD"
+    ],
+    "CBIMPORT": [
+      "CEE3ABD"
+    ],
+    "CBPAUP0C": [],
+    "CBSTM03A": [
+      "CBSTM03B",
+      "CEE3ABD"
+    ],
+    "CBSTM03B": [],
+    "CBTRN01C": [
+      "CEE3ABD"
+    ],
+    "CBTRN02C": [
+      "CEE3ABD"
+    ],
+    "CBTRN03C": [
+      "CEE3ABD"
+    ],
+    "COACCT01": [
+      "MQCLOSE",
+      "MQGET",
+      "MQOPEN",
+      "MQPUT"
+    ],
+    "COACTUPC": [
+      "CEEDAYS",
+      "CSUTLDTC"
+    ],
+    "COACTVWC": [],
+    "COADM01C": [
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COBIL00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "COBSWAIT": [
+      "MVSWAIT"
+    ],
+    "COBTUPDT": [],
+    "COCRDLIC": [],
+    "COCRDSLC": [],
+    "COCRDUPC": [],
+    "CODATE01": [
+      "MQCLOSE",
+      "MQGET",
+      "MQOPEN",
+      "MQPUT"
+    ],
+    "COMEN01C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "COPAUA0C": [
+      "MQOPEN"
+    ],
+    "COPAUS0C": [
+      "COSGN00C"
+    ],
+    "COPAUS1C": [],
+    "COPAUS2C": [],
+    "CORPT00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "COSGN00C": [],
+    "COTRN00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "COTRN01C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "COTRN02C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "CSUTLDTC"
+    ],
+    "COTRTLIC": [],
+    "COTRTUPC": [],
+    "COUSR00C": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COUSR01C": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COUSR02C": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR03C"
+    ],
+    "COUSR03C": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C"
+    ],
+    "CSUTLDTC": [
+      "CEEDAYS"
+    ],
+    "DBUNLDGS": [
+      "CBLTDLI"
+    ],
+    "PAUDBLOD": [
+      "CBLTDLI"
+    ],
+    "PAUDBUNL": [
+      "CBLTDLI"
+    ]
+  },
+  "data_access": {
+    "ACCOUNT-FILE": [
+      "CBACT04C",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "ACCOUNT-INPUT": [
+      "CBEXPORT"
+    ],
+    "ACCOUNT-RECORD": [
+      "CBIMPORT"
+    ],
+    "ACCT-FILE": [
+      "CBSTM03B"
+    ],
+    "ACCTFILE-FILE": [
+      "CBACT01C"
+    ],
+    "ARR-ARRAY-REC": [
+      "CBACT01C"
+    ],
+    "CARD-INPUT": [
+      "CBEXPORT"
+    ],
+    "CARD-RECORD": [
+      "CBIMPORT"
+    ],
+    "CARD-XREF-RECORD": [
+      "CBIMPORT"
+    ],
+    "CARDDEMO.AUTHFRDS": [
+      "COPAUS2C"
+    ],
+    "CARDDEMO.TRANSACTION_TYPE": [
+      "COBTUPDT",
+      "COTRTLIC",
+      "COTRTUPC"
+    ],
+    "CARDFILE-FILE": [
+      "CBACT02C"
+    ],
+    "CUST-FILE": [
+      "CBSTM03B"
+    ],
+    "CUSTFILE-FILE": [
+      "CBCUS01C"
+    ],
+    "CUSTOMER-INPUT": [
+      "CBEXPORT"
+    ],
+    "CUSTOMER-RECORD": [
+      "CBIMPORT"
+    ],
+    "DALYTRAN-FILE": [
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "DATE-PARMS-FILE": [
+      "CBTRN03C"
+    ],
+    "DISCGRP-FILE": [
+      "CBACT04C"
+    ],
+    "ERROR-OUTPUT-RECORD": [
+      "CBIMPORT"
+    ],
+    "EXPORT-INPUT": [
+      "CBIMPORT"
+    ],
+    "EXPORT-OUTPUT-RECORD": [
+      "CBEXPORT"
+    ],
+    "FD-HTMLFILE-REC": [
+      "CBSTM03A"
+    ],
+    "FD-REJS-RECORD": [
+      "CBTRN02C"
+    ],
+    "FD-REPTFILE-REC": [
+      "CBTRN03C"
+    ],
+    "FD-STMTFILE-REC": [
+      "CBSTM03A"
+    ],
+    "FD-TRAN-CAT-BAL-RECORD": [
+      "CBTRN02C"
+    ],
+    "FD-TRANFILE-REC": [
+      "CBACT04C",
+      "CBTRN02C"
+    ],
+    "INFILE1": [
+      "PAUDBLOD"
+    ],
+    "INFILE2": [
+      "PAUDBLOD"
+    ],
+    "OPFIL1-REC": [
+      "PAUDBUNL"
+    ],
+    "OPFIL2-REC": [
+      "PAUDBUNL"
+    ],
+    "OUT-ACCT-REC": [
+      "CBACT01C"
+    ],
+    "TCATBAL-FILE": [
+      "CBACT04C",
+      "CBTRN02C"
+    ],
+    "TR-RECORD": [
+      "COBTUPDT"
+    ],
+    "TRAN-RECORD": [
+      "CBIMPORT"
+    ],
+    "TRANCATG-FILE": [
+      "CBTRN03C"
+    ],
+    "TRANSACT-FILE": [
+      "CBTRN03C"
+    ],
+    "TRANSACTION-INPUT": [
+      "CBEXPORT"
+    ],
+    "TRANTYPE-FILE": [
+      "CBTRN03C"
+    ],
+    "TRNX-FILE": [
+      "CBSTM03B"
+    ],
+    "VBR-REC": [
+      "CBACT01C"
+    ],
+    "XREF-FILE": [
+      "CBACT04C",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C",
+      "CBTRN03C"
+    ],
+    "XREF-INPUT": [
+      "CBEXPORT"
+    ],
+    "XREFFILE-FILE": [
+      "CBACT03C"
+    ]
+  },
+  "copybook_fan": {
+    "CCPAUERY": [
+      "COPAUA0C"
+    ],
+    "CCPAURLY": [
+      "COPAUA0C"
+    ],
+    "CCPAURQY": [
+      "COPAUA0C"
+    ],
+    "CIPAUDTY": [
+      "CBPAUP0C",
+      "COPAUA0C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "DBUNLDGS",
+      "PAUDBLOD",
+      "PAUDBUNL"
+    ],
+    "CIPAUSMY": [
+      "CBPAUP0C",
+      "COPAUA0C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "DBUNLDGS",
+      "PAUDBLOD",
+      "PAUDBUNL"
+    ],
+    "CMQGMOV": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "CMQMDV": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "CMQODV": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "CMQPMOV": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "CMQTML": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "CMQV": [
+      "COACCT01",
+      "CODATE01",
+      "COPAUA0C"
+    ],
+    "COACTUP": [
+      "COACTUPC"
+    ],
+    "COACTVW": [
+      "COACTVWC"
+    ],
+    "COADM01": [
+      "COADM01C"
+    ],
+    "COADM02Y": [
+      "COADM01C"
+    ],
+    "COBIL00": [
+      "COBIL00C"
+    ],
+    "COCOM01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COCRDLI": [
+      "COCRDLIC"
+    ],
+    "COCRDSL": [
+      "COCRDSLC"
+    ],
+    "COCRDUP": [
+      "COCRDUPC"
+    ],
+    "CODATECN": [
+      "CBACT01C"
+    ],
+    "COMEN01": [
+      "COMEN01C"
+    ],
+    "COMEN02Y": [
+      "COMEN01C"
+    ],
+    "COPAU00": [
+      "COPAUS0C"
+    ],
+    "COPAU01": [
+      "COPAUS1C"
+    ],
+    "CORPT00": [
+      "CORPT00C"
+    ],
+    "COSGN00": [
+      "COSGN00C"
+    ],
+    "COSTM01": [
+      "CBSTM03A"
+    ],
+    "COTRN00": [
+      "COTRN00C"
+    ],
+    "COTRN01": [
+      "COTRN01C"
+    ],
+    "COTRN02": [
+      "COTRN02C"
+    ],
+    "COTRTLI": [
+      "COTRTLIC"
+    ],
+    "COTRTUP": [
+      "COTRTUPC"
+    ],
+    "COTTL01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COUSR00": [
+      "COUSR00C"
+    ],
+    "COUSR01": [
+      "COUSR01C"
+    ],
+    "COUSR02": [
+      "COUSR02C"
+    ],
+    "COUSR03": [
+      "COUSR03C"
+    ],
+    "CSDAT01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CSLKPCDY": [
+      "COACTUPC"
+    ],
+    "CSMSG01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CSMSG02Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COTRTUPC"
+    ],
+    "CSSETATY": [
+      "COACTUPC",
+      "COTRTUPC"
+    ],
+    "CSUSR01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CSUTLDPY": [
+      "COACTUPC"
+    ],
+    "CUSTREC": [
+      "CBSTM03A"
+    ],
+    "CVACT01Y": [
+      "CBACT01C",
+      "CBACT04C",
+      "CBEXPORT",
+      "CBIMPORT",
+      "CBSTM03A",
+      "CBTRN01C",
+      "CBTRN02C",
+      "COACCT01",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COPAUA0C",
+      "COPAUS0C",
+      "COTRN02C"
+    ],
+    "CVACT02Y": [
+      "CBACT02C",
+      "CBEXPORT",
+      "CBIMPORT",
+      "CBTRN01C",
+      "COACTVWC",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COPAUS0C",
+      "COTRTLIC"
+    ],
+    "CVACT03Y": [
+      "CBACT03C",
+      "CBACT04C",
+      "CBEXPORT",
+      "CBIMPORT",
+      "CBSTM03A",
+      "CBTRN01C",
+      "CBTRN02C",
+      "CBTRN03C",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COPAUA0C",
+      "COPAUS0C",
+      "COTRN02C"
+    ],
+    "CVCRD01Y": [
+      "COACTUPC",
+      "COACTVWC",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COTRTLIC",
+      "COTRTUPC"
+    ],
+    "CVCUS01Y": [
+      "CBCUS01C",
+      "CBEXPORT",
+      "CBIMPORT",
+      "CBTRN01C",
+      "COACTUPC",
+      "COACTVWC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COPAUA0C",
+      "COPAUS0C"
+    ],
+    "CVEXPORT": [
+      "CBEXPORT",
+      "CBIMPORT"
+    ],
+    "CVTRA01Y": [
+      "CBACT04C",
+      "CBTRN02C"
+    ],
+    "CVTRA02Y": [
+      "CBACT04C"
+    ],
+    "CVTRA03Y": [
+      "CBTRN03C"
+    ],
+    "CVTRA04Y": [
+      "CBTRN03C"
+    ],
+    "CVTRA05Y": [
+      "CBACT04C",
+      "CBEXPORT",
+      "CBIMPORT",
+      "CBTRN01C",
+      "CBTRN02C",
+      "CBTRN03C",
+      "COBIL00C",
+      "CORPT00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C"
+    ],
+    "CVTRA06Y": [
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CVTRA07Y": [
+      "CBTRN03C"
+    ],
+    "DFHAID": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "DFHBMSCA": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "IMSFUNCS": [
+      "DBUNLDGS",
+      "PAUDBLOD",
+      "PAUDBUNL"
+    ],
+    "PADFLPCB": [
+      "DBUNLDGS"
+    ],
+    "PASFLPCB": [
+      "DBUNLDGS"
+    ],
+    "PAUTBPCB": [
+      "DBUNLDGS",
+      "PAUDBLOD",
+      "PAUDBUNL"
+    ],
+    "REPLACING": [
+      "COACCT01",
+      "CODATE01"
+    ]
+  },
+  "direct_call_edges": {
+    "CBACT01C": [
+      "CEE3ABD",
+      "COBDATFT"
+    ],
+    "CBACT02C": [
+      "CEE3ABD"
+    ],
+    "CBACT03C": [
+      "CEE3ABD"
+    ],
+    "CBACT04C": [
+      "CEE3ABD"
+    ],
+    "CBCUS01C": [
+      "CEE3ABD"
+    ],
+    "CBEXPORT": [
+      "CEE3ABD"
+    ],
+    "CBIMPORT": [
+      "CEE3ABD"
+    ],
+    "CBPAUP0C": [],
+    "CBSTM03A": [
+      "CBSTM03B",
+      "CEE3ABD"
+    ],
+    "CBSTM03B": [],
+    "CBTRN01C": [
+      "CEE3ABD"
+    ],
+    "CBTRN02C": [
+      "CEE3ABD"
+    ],
+    "CBTRN03C": [
+      "CEE3ABD"
+    ],
+    "COACCT01": [
+      "MQCLOSE",
+      "MQGET",
+      "MQOPEN",
+      "MQPUT"
+    ],
+    "COACTUPC": [
+      "CSUTLDTC"
+    ],
+    "COACTVWC": [],
+    "COADM01C": [
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COBIL00C": [
+      "COMEN01C",
+      "COSGN00C"
+    ],
+    "COBSWAIT": [
+      "MVSWAIT"
+    ],
+    "COBTUPDT": [],
+    "COCRDLIC": [],
+    "COCRDSLC": [],
+    "COCRDUPC": [],
+    "CODATE01": [
+      "MQCLOSE",
+      "MQGET",
+      "MQOPEN",
+      "MQPUT"
+    ],
+    "COMEN01C": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C"
+    ],
+    "COPAUA0C": [
+      "MQOPEN"
+    ],
+    "COPAUS0C": [
+      "COSGN00C"
+    ],
+    "COPAUS1C": [],
+    "COPAUS2C": [],
+    "CORPT00C": [
+      "COMEN01C",
+      "COSGN00C",
+      "CSUTLDTC"
+    ],
+    "COSGN00C": [],
+    "COTRN00C": [
+      "COMEN01C",
+      "COSGN00C",
+      "COTRN01C"
+    ],
+    "COTRN01C": [
+      "COMEN01C",
+      "COSGN00C",
+      "COTRN00C"
+    ],
+    "COTRN02C": [
+      "COMEN01C",
+      "COSGN00C",
+      "CSUTLDTC"
+    ],
+    "COTRTLIC": [],
+    "COTRTUPC": [],
+    "COUSR00C": [
+      "COADM01C",
+      "COSGN00C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "COUSR01C": [
+      "COADM01C",
+      "COSGN00C"
+    ],
+    "COUSR02C": [
+      "COADM01C",
+      "COSGN00C"
+    ],
+    "COUSR03C": [
+      "COADM01C",
+      "COSGN00C"
+    ],
+    "CSUTLDTC": [
+      "CEEDAYS"
+    ],
+    "DBUNLDGS": [
+      "CBLTDLI"
+    ],
+    "PAUDBLOD": [
+      "CBLTDLI"
+    ],
+    "PAUDBUNL": [
+      "CBLTDLI"
+    ]
+  }
+}
