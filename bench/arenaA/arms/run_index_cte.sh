@@ -6,6 +6,6 @@ while IFS= read -r line; do
   id=$(jq -r .id <<<"$line"); name=$(jq -r .type_simple <<<"$line")
   args=$(jq -cn --arg n "$name" --arg ref "$PIN_REF" '{type_name:$n,repo:"hazelcast",branch:$ref,transitive:true}')
   resp=$(python3 "$HERE/mcp_call.py" find_implementations "$args")
-  found=$(jq -r '..|.class_name? // empty' <<<"$resp" | sort -u | jq -R . | jq -cs .)
-  jq -cn --arg id "$id" --argjson f "$found" '{id:$id, arm:"index_cte", found_simple:$f, found_fqn:null, calls:1}'
+  found=$(jq -c '[(.results // .) | .[]? | select((.file_path//"")|contains("/src/main/")) | .class_name] | unique' <<<"$resp")
+  jq -cn --arg id "$id" --argjson f "${found:-[]}" '{id:$id, arm:"index_cte", found_simple:$f, found_fqn:null, calls:1}'
 done < "$Q"
