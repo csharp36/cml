@@ -106,6 +106,22 @@ is independent of all three arms: it's not grep's text, not tree-sitter's parse,
 `scip-java` output. Never grade a tool with its own data. Scoring is precision / recall / F1 of each
 arm's answer set against this bytecode truth.
 
+**What those three numbers mean.** Each arm returns a *set* of class names; the oracle is the *true*
+set. Compare them and you get three standard measures:
+
+- **Precision** — of the types the arm *returned*, what fraction are actually implementers? It
+  punishes false positives (naming a class that isn't really a subtype). Precision 0.65 means a third
+  of the answers were wrong.
+- **Recall** — of *all* the types that truly implement X, what fraction did the arm *find*? It
+  punishes misses. Recall 0.32 means it found under a third of the real implementers and silently
+  dropped the rest. **This is the completeness measure**, and — spoiler — it's the whole story here.
+- **F1** — the harmonic mean of the two, `2·P·R / (P+R)`. A single 0–1 score that's only high when
+  precision *and* recall are both high; it collapses toward whichever is worse, so you can't game it
+  by being complete-but-sloppy or precise-but-narrow.
+
+A find-everything-and-guess strategy scores high recall but low precision; a return-only-the-one-you're-sure-of
+strategy does the reverse. F1 is the honest summary, and it's the column to watch in the tables below.
+
 ## 3. The two alignment traps (or: why the first numbers lied)
 
 Two methodology bugs nearly produced a bogus result, both worth stating because they generalize.
