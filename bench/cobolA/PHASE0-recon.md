@@ -6,10 +6,10 @@
 
 - Programs parsed: 44
 - Static call/XCTL edges: 34
-- Dynamic dispatch edges: 41
-- Dynamic share: 54.7%
+- Dynamic dispatch edges: 31
+- Dynamic share: 47.7%
 - Max static call-chain depth: 3
-- Resources (copybook/file) shared by >=3 programs: 31
+- Resources (copybook/file) shared by >=3 programs: 29
 
 ## Gate thresholds
 
@@ -17,9 +17,9 @@
 
 ## Signals firing
 
-- dynamic dispatch 55% >= 15%
+- dynamic dispatch 47.7% >= 15%
 - call depth 3 >= 3
-- shared-data fan 31 >= 5
+- shared-data fan 29 >= 5
 
 ## Interpretation
 

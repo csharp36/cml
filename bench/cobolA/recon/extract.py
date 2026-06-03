@@ -18,7 +18,8 @@ def normalize_line(raw: str) -> str | None:
 
 _PROGRAM_ID = re.compile(r"\bPROGRAM-ID\.\s+([A-Z0-9][A-Z0-9-]*)", re.I)
 _CALL_LIT = re.compile(r"\bCALL\s+['\"]([A-Z0-9][A-Z0-9-]*)['\"]", re.I)
-_CALL_VAR = re.compile(r"\bCALL\s+(?!['\"])([A-Z0-9][A-Z0-9-]*)", re.I)
+_CALL_VAR = re.compile(r"(?<![A-Za-z0-9-])CALL\s+(?!['\"])([A-Z0-9][A-Z0-9-]*)", re.I)
+_STRLIT = re.compile(r"'[^']*'|\"[^\"]*\"")
 _XCTL_LINK = re.compile(
     r"\bEXEC\s+CICS\s+(?:XCTL|LINK)\b[^.]*?\bPROGRAM\s*\(\s*(['\"]?)([A-Z0-9][A-Z0-9-]*)\1?",
     re.I | re.S,
@@ -36,29 +37,40 @@ _SQL = re.compile(r"\bEXEC\s+SQL\b", re.I)
 _CICS = re.compile(r"\bEXEC\s+CICS\b", re.I)
 
 
-def _code_text(source_text: str) -> str:
-    """Join the normalized (comment-stripped) code area of every line."""
+def _code_text(source_text: str, strip_literals: bool = False) -> str:
+    """Join the normalized (comment-stripped) code area of every line.
+
+    strip_literals=True additionally blanks the CONTENTS of string literals
+    (keeping the quotes as ''), so passes that must not read literal text
+    (dynamic CALL, file verbs) don't match words like CALL/START inside a
+    DISPLAY string. The non-stripped text is still used for _CALL_LIT / _XCTL
+    / _COPY, which legitimately need the quoted operand.
+    """
     out = []
     for raw in source_text.splitlines():
         norm = normalize_line(raw)
         if norm is not None:
             out.append(norm)
-    return "\n".join(out)
+    code = "\n".join(out)
+    if strip_literals:
+        code = _STRLIT.sub("''", code)
+    return code
 
 
 def extract_program_facts(source_text: str) -> dict:
     code = _code_text(source_text)
+    code_nostr = _code_text(source_text, strip_literals=True)
     pid = _PROGRAM_ID.search(code)
     static_xctl = {m.group(2).upper() for m in _XCTL_LINK.finditer(code) if m.group(1)}
     dynamic_xctl = sum(1 for m in _XCTL_LINK.finditer(code) if not m.group(1))
     return {
         "program_id": pid.group(1).upper() if pid else "",
         "static_calls": {m.group(1).upper() for m in _CALL_LIT.finditer(code)},
-        "dynamic_call_count": len(_CALL_VAR.findall(code)),
+        "dynamic_call_count": len(_CALL_VAR.findall(code_nostr)),
         "static_xctl_link": static_xctl,
         "dynamic_xctl_link_count": dynamic_xctl,
         "copybooks": {m.group(1).upper() for m in _COPY.finditer(code)},
-        "file_ops": {m.group(1).upper() for m in _FILE_OP.finditer(code)},
+        "file_ops": {m.group(1).upper() for m in _FILE_OP.finditer(code_nostr)},
         "uses_sql": bool(_SQL.search(code)),
         "uses_cics": bool(_CICS.search(code)),
     }

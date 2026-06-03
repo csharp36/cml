@@ -47,7 +47,7 @@ def gate_metrics(facts: dict) -> dict:
 def gate_recommendation(m: dict) -> dict:
     signals = []
     if m["dynamic_share"] >= DYNAMIC_SHARE_PROCEED:
-        signals.append(f"dynamic dispatch {m['dynamic_share']:.0%} >= {DYNAMIC_SHARE_PROCEED:.0%}")
+        signals.append(f"dynamic dispatch {m['dynamic_share']:.1%} >= {DYNAMIC_SHARE_PROCEED:.0%}")
     if m["max_chain_depth"] >= DEPTH_PROCEED:
         signals.append(f"call depth {m['max_chain_depth']} >= {DEPTH_PROCEED}")
     if m["resources_at_or_above_threshold"] >= FAN_PROCEED:

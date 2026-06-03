@@ -41,3 +41,24 @@ def test_file_ops_ignores_hyphenated_read_write_verbs():
     ])
     facts = extract_program_facts(src)
     assert facts["file_ops"] == {"ACCTFILE"}
+
+def test_dynamic_call_ignores_end_call_and_hyphen_suffix():
+    # END-CALL and `-CALL`-suffixed paragraph names must NOT count as dynamic calls.
+    src = "\n".join([
+        "000100     CALL WS-PGM.",                       # the ONE real dynamic call
+        "000200     END-CALL",
+        "000300     IF WS-X = 1",
+        "000400     PERFORM 3200-INSERT-IMS-CALL THRU 3200-EXIT.",
+    ])
+    assert extract_program_facts(src)["dynamic_call_count"] == 1
+
+def test_call_and_start_inside_string_literals_are_ignored():
+    src = "\n".join([
+        "000100     DISPLAY 'GNP CALL FAILED :'.",       # CALL inside a string -> not a call
+        "000200     DISPLAY 'START OF EXECUTION'.",       # START inside a string -> not a file op
+        "000300     CALL 'REALPGM'.",                     # real static call must still register
+    ])
+    facts = extract_program_facts(src)
+    assert facts["dynamic_call_count"] == 0
+    assert facts["file_ops"] == set()
+    assert facts["static_calls"] == {"REALPGM"}

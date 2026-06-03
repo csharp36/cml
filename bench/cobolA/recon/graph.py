@@ -15,7 +15,12 @@ def build_call_graph(facts_by_program: dict) -> dict:
 
 
 def max_chain_depth(graph: dict) -> int:
-    """Longest simple-path node count. Cycle-safe via on-stack tracking + memo."""
+    """Longest simple-path node count. Cycle-safe via on-stack tracking + memo.
+
+    # NOTE: exact for DAGs (CardDemo's call graph is acyclic). In graphs mixing a
+    # cycle with a long branch the memo can under-count the longest simple path;
+    # acceptable for the Phase 0 gate (a lower bound on depth).
+    """
     memo = {}
 
     def dfs(node, stack):
