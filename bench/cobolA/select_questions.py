@@ -55,10 +55,10 @@ def build_questions(oracle: dict, caps: dict | None = None) -> list[dict]:
         if len(ans) >= 2:
             cand.append(_mk("data_access", res, ans))
 
-    # stratum 3 — data coupling (program with >= 1 coupled program)
+    # stratum 3 — data coupling (program with >= 2 coupled programs)
     for pid, coupled in oracle["data_coupling"].items():
         ans = filt(coupled)
-        if len(ans) >= 1:
+        if len(ans) >= 2:
             cand.append(_mk("data_coupling", pid, ans))
 
     # stratum 4 — copybook fan (copybook with >= 2 includers)

@@ -5,7 +5,7 @@ ORACLE = {
     "transitive_call_closure": {"A": ["B", "C", "ZZVENDOR"], "B": ["C"], "C": []},
     "data_access": {"FILE1": ["A", "B"], "FILE2": ["A"]},
     "copybook_fan": {"CPY1": ["A", "B", "C"], "CPY2": ["A"]},
-    "data_coupling": {"A": ["B"], "B": ["A"], "C": []},
+    "data_coupling": {"A": ["B", "C"], "B": ["A"], "C": ["A"]},
     "cics_txn_entry": {"TX01": "A"},
     "txn_reach": {"TX01": ["A", "B", "C"]},
 }
