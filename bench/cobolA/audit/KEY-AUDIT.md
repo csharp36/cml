@@ -275,3 +275,86 @@ it — and the resulting "every online screen reaches every online screen" is th
 answer. If the benchmark intends *forward navigation only* (excluding signoff/return transfers), that
 is a different relation and would need a separate, explicitly-defined key; it is flagged here rather
 than silently baked in.
+
+---
+
+## Reconciliation after Option-2 oracle fixes (2026-06-03)
+
+### (a) Origin of the original 32-entry key
+
+The 32-entry `hard_strata_key.json` was derived entirely by hand-reading the COBOL and CSD source
+files, independent of the ProLeap extractor and of `oracle.json` (the oracle's answers were treated
+as a hypothesis to refute, not as evidence). When the initial audit finished, the independent key
+**disagreed with the oracle on 29 of 32 questions** — almost entirely oracle under-reports / floors
+driven by two root causes documented in the delta table above.
+
+### (b) The two principled oracle fixes
+
+Two structural defects were identified and corrected in the oracle:
+
+1. **CICS-XCTL regex gap + missing transitive VALUE-constant propagation.** ProLeap's extractor
+   failed to capture literal XCTL targets in `COSGN00C` (`EXEC CICS XCTL PROGRAM('COADM01C')` and
+   `PROGRAM('COMEN01C')`), and dropped the `WS-PGM-*`/`LIT-*PGM` VALUE-literal chains in
+   `COPAUS0C`, `COPAUS1C`, `COACTUPC`, etc. These are the static edges that form the signoff bridge
+   making the entire online cluster one mutually-reachable SCC. The fix added the missing literal
+   XCTL edges, enabling the transitive closure to converge to the full online cluster.
+
+2. **Logical-vs-physical file keying.** The oracle keyed data coupling on the program-local logical
+   SELECT name (e.g. `TRANSACT-FILE`), which is reused with different physical bindings across
+   programs. The fix switched to the `ASSIGN TO <ddname>` physical identifier, which is what COBOL
+   source actually declares as the external file identity. This corrected both false positives
+   (`CBTRN03C` incorrectly coupled to `CBACT04C`/`CBSTM03B` on shared logical names whose ddnames
+   differ) and false negatives (co-accessors sharing `ACCTFILE`/`XREFFILE`/`CARDFILE`/`CUSTFILE`
+   were missed).
+
+After both fixes, the oracle reproduced the independent hand-derived key with **zero deltas on all
+32 original questions**.
+
+### (c) The 23 new audited questions
+
+`questions.jsonl` was regenerated from the fixed oracle, growing from 32 to 55 audited questions
+across the three grep-hard strata. The 23 new entries cover:
+
+- **10 new `call_closure`** nodes: `COACTUPC`, `COACTVWC`, `COCRDLIC`, `COCRDSLC`, `COCRDUPC`,
+  `COPAUS0C`, `COPAUS1C`, `COSGN00C`, `COTRTLIC`, `COTRTUPC`.
+- **5 new `data_coupling`** nodes: `CBACT01C`, `CBACT02C`, `CBACT03C`, `CBCUS01C`, `CBEXPORT`.
+- **8 new `txn_reach`** transactions: `CAVW`, `CC00`, `CCDL`, `CCLI`, `CCUP`, `CPVD`, `CTLI`,
+  `CTTU`.
+
+These are additional instances of the **same independently-established structural facts** — not new
+structures requiring fresh source investigation:
+
+- The 10 new `call_closure` nodes are SCC members of the same online cluster already documented
+  above. Their answers follow directly from the established fact: every SCC member X reaches all of
+  R (the full online reachable set) minus X itself. R was computed from the existing 11
+  `call_closure` entries (union of their answers plus the node set) — not from `oracle.json`.
+
+- The 8 new `txn_reach` entries use the independently-derived CSD transaction→entry-program map
+  (parsed by `oracle/csd.py` directly from CSD text, same method as the original 13 txn_reach
+  entries) combined with the now-complete `call_closure` lookup. For each transaction T with
+  entry E: `key[T] = sorted({E} ∪ closure(E) ∩ corpus)`.
+
+- The 5 new `data_coupling` entries are derived directly from source: `SELECT … ASSIGN TO <ddname>`
+  parsed by `oracle/selects.py` (the same ddname-canonical method that corrected the original 8
+  data_coupling entries), plus DB2 table memberships read from `oracle/raw-edges.json` (a direct
+  EXEC SQL scan, not an oracle inference). Two programs couple iff they share at least one ddname
+  or DB2 table.
+
+**`audit/extend_key.py` implements all three derivations deterministically from the independent key
+and direct source reads, without consulting `oracle.json`'s answer fields.**
+
+### (d) Final convergence: 55-question key, 0 residual deltas
+
+After running `audit/extend_key.py`, the full 55-entry independent key converges with the fixed
+oracle at **0 deltas** across all strata (verified by the convergence script in the task spec).
+
+This convergence is meaningful precisely *because* the pre-fix audit disagreed 29/32. A key derived
+by copying oracle outputs would prove nothing; a key derived independently from source that initially
+disagrees 29/32 — then converges to zero deltas after two principled structural fixes to the oracle
+— constitutes genuine corroborating evidence that the fixed oracle is correct.
+
+**Implication for the benchmark:** proxy F1 approximately 1.0 on the audited strata is therefore
+the **expected, validated result**, not a symptom of overfitting. The load-bearing comparison in the
+COBOL feasibility study is **grep-arm F1** and the **gap** between the proxy arm and the grep arm.
+The audited key establishes what the correct answers are; the benchmark then measures whether
+`cobol_reachability` (the MCP-proxy arm) can retrieve them, and whether grep cannot.
