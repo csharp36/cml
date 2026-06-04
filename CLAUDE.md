@@ -13,7 +13,13 @@ via SCIP-backed `get_type_hierarchy` in **one query at recall 0.97 / F1 0.88**, 
 at **0.32 / 0.32 over ~102 queries** (validated against an independent compiled-bytecode oracle; the
 win is completeness, not precision). For *implementing features* and *general code discovery*, `grep`
 ties or wins and is cheaper — so pitch CML as a **type-resolution oracle that complements `grep`**,
-not "faster code search." Evidence: `docs/superpowers/results/` (3 writeups) + `bench/arenaA/`.
+not "faster code search." A pre-registered cross-language probe on **COBOL** (AWS CardDemo, 44
+programs) found the *shape* of the win only partly transfers: a `cobol_reachability` oracle decisively
+beats `grep` on **dynamic-dispatch reachability** (CICS `XCTL` menu dispatch via `OCCURS`/`VALUE`
+tables `grep` can't enumerate — `call_closure`/`txn_reach` F1 ~0.15-0.21→1.0) but ties on static
+file/copybook relations, so the gating macro-average lands the verdict at **AMBIGUOUS** — real but
+narrow. Evidence: `docs/superpowers/results/` (4 writeups) + `bench/arenaA/` (Java) + `bench/cobolA/`
+(COBOL).
 
 **Tech stack:** Java 21+, Gradle (Kotlin DSL), PostgreSQL 16, Tree-sitter structural parsing via tree-sitter-ng (Java, Python, TypeScript/JavaScript, Go, C), SCIP protobuf for type-resolved semantics, MCP protocol (stdio + Streamable HTTP)
 
