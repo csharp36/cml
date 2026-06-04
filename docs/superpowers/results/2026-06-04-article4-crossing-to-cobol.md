@@ -41,12 +41,15 @@ txn_reach (0.212) — show a chasm to the oracle's 1.000. The three static strat
 
 *[FIGURE: results — strata bar chart, described in alt-text. Same data as the table in §7.]*
 
-The win's shape **does** transfer — but it narrows. Where COBOL dispatches dynamically (a CICS
-menu picking the next program out of a runtime-indexed table), the oracle is decisive and `grep`
-falls off a cliff: F1 ~0.15–0.21 → 1.00. Where COBOL is static (which file a program reads, which
-copybook it includes), a careful `grep` user keeps pace and the oracle wins only on *convenience*,
-not *completeness*. Averaged across the gating strata, that mix lands at AMBIGUOUS: a real
-differentiator that doesn't blanket the whole problem. Below is the whole thing, including the part
+The win's shape **does** transfer — but it narrows, and then narrows again under scrutiny. Where
+COBOL dispatches dynamically (a CICS menu picking the next program out of a runtime-indexed table),
+the oracle is decisive and `grep` falls off a cliff: F1 ~0.15–0.21 → 1.00. Where COBOL is static
+(which file a program reads, which copybook it includes), a careful `grep` user keeps pace and the
+oracle wins only on *convenience*, not *completeness*. Averaged across the gating strata, that mix
+lands at AMBIGUOUS: a real differentiator that doesn't blanket the whole problem. And when I ablate
+the corpus's navigation-shell degeneracy (§9), most of the dynamic-dispatch *breadth* turns out to be
+one structural fact counted ~21 times — the genuine win is real but concentrated on the ~5 nodes that
+actually own the dispatch, and `grep` ties on the navigation leaves. Below is the whole thing, including the part
 where an independent audit caught two bugs in my own oracle — and where, because that audit and the
 oracle shared one (first-time-COBOL) mind, I brought in a **second oracle built on a different
 compiler** to check the first. It agrees 44/44, which says the edges are read correctly; it can't say
@@ -192,6 +195,16 @@ the handful of literal/MOVE-resolvable transfers. **The oracle recovers 22** —
 ~23-program online cluster, every screen wired through the dispatch table. Same wall as Article 3,
 different language. *That* is the win's shape, and it's the thing I wanted to know would transfer.
 
+One precision, because it's the exact line of the wall (and I'll hold myself to it later). `grep`'s
+blindness here is *not* to the program *names* — they sit as plain `VALUE 'COACTVWC'` literals in the
+copybook, and `grep "VALUE 'CO"` would list all eleven. The wall is one step in: **binding the
+runtime `OCCURS` index to those copybook literals and composing the transitive closure** — knowing
+that `CDEMO-MENU-OPT-PGMNAME(WS-OPTION)` *is* those eleven names and then walking onward. That's the
+move static analysis makes and text search can't. (The `grep` arm is pre-registered not to harvest
+copybook `VALUE` clauses as dispatch targets — that enumeration is precisely the construct under
+test, so it's a drawn line, not a handicap.) So when I say "`grep` sees 2 of 22," read it as
+*closure-composition*, not *name-recovery* — the stronger and more precise claim.
+
 ## 4. The setup: two arms, five strata, pre-registered
 
 The design mirrors Article 3 deliberately. Two **deterministic** arms answer the *same* questions —
@@ -283,11 +296,18 @@ history (`bench/cobolA`, `audit/KEY-AUDIT.md`):
 - **One person wrote both the oracle and the audit — me, the first-time COBOL reader.** So the audit
   is *method*-independent (hand-reading source vs running ProLeap) but not *mind*-independent. It
   caught the two bugs precisely because the two *methods* diverged there. What it structurally cannot
-  catch is a modeling choice I got *consistently* wrong in both. And there's a live one: counting a
-  **signoff** `XCTL` (`screen → COSGN00C → re-dispatch`) as a reachability edge is a *decision*, and
-  it's the dominant driver of the win — it's what collapses the whole online tier into one
-  mutually-reachable cluster. Both the oracle and my audit make that same choice; their agreement
-  cannot validate it. If it's the wrong relation for decomposition, both are wrong together, invisibly.
+  catch is a modeling choice I got *consistently* wrong in both. And there's a live one: I counted the
+  `screen → COSGN00C → re-dispatch` transfer as a reachability edge — which is what collapses the whole
+  online tier into one mutually-reachable cluster. I originally called it a "signoff" edge. It mostly
+  *isn't*: reading the source, that edge is the `IF EIBCALEN = 0 MOVE 'COSGN00C'` **cold-start /
+  lost-session guard** every pseudo-conversational screen carries (`COBIL00C.cbl:107`,
+  `COUSR01C.cbl:78`) — session plumbing, not a business dependency — while the real PF3 handler returns
+  to the *parent menu* (`MOVE 'COMEN01C'/'COADM01C'`). Both the oracle and my audit treat that
+  shell-transit as an edge; their agreement cannot validate the *choice*. And it's load-bearing in a
+  specific way I'll show in §9: it's the dominant driver of the win's **breadth** (the degeneracy),
+  even though the OCCURS dispatch is the driver of the win's **substance**. If shell-transit is the
+  wrong relation for decomposition — and for "what's coupled to this screen," it probably is — both
+  artifacts are wrong together, invisibly. This is exactly the common mode a same-mind check can't see.
 
 That last point is the real hole, and "I treated the oracle's answers as a hypothesis to refute" —
 true as it is — doesn't close it, because the refuter and the refuted share a skull. So I did the one
@@ -318,14 +338,14 @@ on both; the bug-2 case `CBTRN03C` couples to `{CBTRN01C, CBTRN02C}` and *not* `
 And — because a test that can't fail proves nothing — I checked that the cross-check has teeth.
 Re-inject bug #1 into the second extractor (require `PROGRAM(` with no space) and `COSGN00C`
 collapses to zero edges again, and **21 of 44 programs** immediately disagree with the first oracle,
-the signoff-bridge collapse rippling through every closure. So the second toolchain *would* have
+the signon-hub collapse rippling through every closure. So the second toolchain *would* have
 shouted if ProLeap still had the bug. It doesn't shout. That independently confirms the two audited
 bugs are really fixed — by a parser that shares none of my code.
 
 Here's the part I have to be straight about, though, because it's the same discipline the rest of
 this demands: **this hardens the parsing layer, not the modeling layer.** I wrote the second
 extractor *after* the audit, knowing the answers, so it encodes the *same* modeling choices —
-signoff-as-edge, ddname-as-identity, commarea-as-ceiling. Two implementations agreeing that the edges
+shell-transit-as-edge, ddname-as-identity, commarea-as-ceiling. Two implementations agreeing that the edges
 are correctly read from source is real and worth having; it is *not* a second opinion on whether
 those were the right edges to count. The residual fix for *that* — the thing neither a hand-audit nor
 a second extractor I write can provide — is a COBOL-literate human reading the relation definitions,
@@ -363,7 +383,9 @@ verdict is the AMBIGUOUS one.
 0.212) are the strata defined by the `OCCURS`-table dispatch from §3. This is the `COMEN01C` case —
 `grep` recovers 2 of 22 — repeated across the menu system. Enumerating a runtime-indexed
 program-name table is the type-resolution-shaped move `grep` can't make and static analysis can.
-**The Java win's shape transferred here intact.**
+**The Java win's shape transferred here.** But read that 0.145 with care — a chunk of it is a
+navigation artifact, not the OCCURS wall, and §9 takes the stratum apart to show how much. The
+*substance* of the win is real; its *breadth* on this corpus is inflated.
 
 **A tie: the static relations.** `data_access` (0.749), `data_coupling` (0.674), `copybook_fan`
 (1.000) are flat literal lookups — `SELECT … ASSIGN`, `READ`/`WRITE`, `COPY`. A fairly-resourced
@@ -379,21 +401,50 @@ substrate the way type resolution blankets "find all implementers" in Java. In J
 structural question routed through the type graph. In COBOL, only some of the decomposition questions
 route through a graph `grep` can't close — and the rest are honest literal lookups.
 
-## 9. A structural caveat about CardDemo itself
+## 9. Taking the win apart: how much is OCCURS, how much is navigation?
 
-There's a subtlety I have to surface rather than hide, because it argues against my own headline.
-CardDemo's online tier is a **navigationally-complete menu system**: every screen returns to the menu
-hub (PF3 → signoff → `COSGN00C` → `COMEN01C`/`COADM01C`), and the menus fan back out to every screen.
-Graph-theoretically, that makes the ~23 online programs a single **strongly-connected component** —
-from any one you can reach all the others.
+The first draft of this article *flagged* a worry here and left it qualitative; two reviews
+(one of them the second-toolchain dry run) pushed me to actually measure it, and the measurement is
+the most useful thing in the piece. So here it is.
 
-The consequence: `call_closure` and `txn_reach` answers are *nearly identical* across all online
-programs. That makes transitive reachability a **low-information discriminator** on this particular
-corpus — many of my 21+21 questions have near-duplicate answers. The oracle still *wins* every one of
-them (grep can't traverse the SCC because every hub edge runs through an `OCCURS` table), but "wins a
-degenerate, repetitive relation" is weaker evidence than "wins a discriminating one." A chunk of that
-0.477 gap rests on the same menu structure measured many times. I flag it rather than let the headline
-number stand unqualified.
+CardDemo's online tier is a **navigationally-complete menu system**: the menus fan out to every
+screen through the `OCCURS` table, and every screen transfers *back* to the shell — to its parent
+menu (`MOVE 'COMEN01C'/'COADM01C'`, the PF3 return) and to `COSGN00C` (the `EIBCALEN = 0` cold-start
+guard). Graph-theoretically that makes the ~23 online programs **one strongly-connected component**:
+from any one you can reach all the others. The consequence is that every `call_closure` answer is
+"the whole tier minus the seed" — I measured it: **all 21 closures are size 22, with mean pairwise
+Jaccard 0.913.** That's a near-duplicate question set wearing 21 different hats. The win is being
+counted ~21 times.
+
+But here's the thing those shell edges are: **navigation, not dependency.** If I'm peeling `COBIL00C`
+out into a service, the fact that it can "reach" `COCRDLIC` only by navigating *home through the menu*
+does not couple them — the menu hub is precisely where you'd cut. So I ran the obvious experiment:
+treat the shell (`COSGN00C` + the two menus) as a **decomposition boundary** — reachable, but
+coupling doesn't propagate *through* it — and recompute every closure. (Full method and the per-node
+table: [`oracle2-gnucobol/ABLATION.md`](#).) Three things fall out, and each answers a question the
+qualitative caveat couldn't:
+
+- **The degeneracy was real and large.** Mean pairwise Jaccard drops **0.913 → 0.242**; closure
+  sizes spread from a flat `[22]` to `[1..15]`. The SCC *was* doing most of the work of making the
+  questions look numerous.
+- **Most of the `call_closure` gap was the shell, not the wall.** `grep`'s F1 on this stratum rises
+  from **0.145 to 0.438** under the boundary relation — essentially the pre-registered `grep ≤ 0.45`
+  bar. On the **pure-navigation leaf screens** (`COBIL00C`, `COUSR01–03C`, `CORPT00C`, …) `grep`
+  *ties* the oracle once you stop counting transit through the shell: those closures are just "the
+  shell I return to," which `grep` reads fine.
+- **The genuine win survives — concentrated.** It lives on the nodes that actually *own* dynamic
+  dispatch: the menus (`COMEN01C`: oracle 15, `grep` 1; `COADM01C`: oracle 7, `grep` 1) and the
+  handful of screens that forward-dispatch through `VALUE` literals (`COCRDLIC`, `COACTUPC`,
+  `COTRTLIC` — `grep` 0). That's ~5 nodes, not 21.
+
+So the honest revision of §8: the structural win is **real and is the one move `grep` cannot make**,
+but on this corpus its *breadth* was a navigation artifact. "Wins a discriminating relation on the
+handful of nodes where the OCCURS/VALUE dispatch actually lives" is the claim the data supports —
+stronger and narrower than "wins `call_closure` 21 times." (Caveat on the caveat: the boundary I drew
+is itself a modeling choice I made knowing the corpus — a defensible decomposition relation, not the
+only one, and exactly the kind of call the still-open human COBOL review should adjudicate. The two
+facts that *don't* depend on my choice are the Jaccard collapse and that `grep` ties on the
+pure-navigation leaves.)
 
 ## 10. The honest caveats
 
@@ -402,16 +453,19 @@ I spent three articles refusing to oversell. Not starting now.
 - **One small, clean corpus.** 44 programs, single sample. CardDemo is tidy *by construction*; real
   mainframe estates are messier — multiple dialects, copybook sprawl, genuinely dynamic `CALL`s whose
   targets aren't statically knowable at all.
-- **SCC degeneracy** (§9): the two strata carrying the win are near-uniform on this corpus, so the
-  wide gap leans substantially on one repeated structure.
+- **SCC degeneracy** (§9), now quantified: the `call_closure` answers are near-uniform (mean pairwise
+  Jaccard 0.913); ablating the navigation shell raises `grep`'s F1 on that stratum from 0.145 to 0.438
+  and concentrates the surviving win on ~5 dispatch-owning nodes. The breadth of the win was largely
+  one structure measured many times.
 - **Proxy F1 ≈ 1.0 by construction.** The proxy serves the oracle; its score is a "perfect delivery"
   baseline, not evidence about robustness. The evidence is `grep`'s shortfall and the gap.
 - **The oracle's validation is method- and toolchain-independent, but not yet mind-independent**
   (§5–6). A frozen 32-question blind audit (29/32 → 0 after two principled fixes) plus a second
   GnuCOBOL-lineage extractor (44/44 agreement, with a negative control proving it could have caught
   the bug) corroborate that the edges are *correctly extracted from source*. They do **not**
-  adjudicate the *modeling* choices (signoff-as-edge, ddname-identity) — both checks share my COBOL
-  mental model. That residual rests on one head until a COBOL-literate reader weighs in.
+  adjudicate the *modeling* choices (shell-transit-as-edge, ddname-identity) — both checks share my
+  COBOL mental model. The hub ablation in §9 is a first probe at one of those choices, but the boundary
+  it draws is *also* mine; that residual rests on one head until a COBOL-literate reader weighs in.
 - **Thin gating stratum.** `data_access` has only n=10 after physical-file keying.
 - **Make-vs-buy.** Commercial and academic COBOL dependency analyzers already exist. This benchmark
   does **not** claim CML resolves COBOL reachability *better* than they do. Its distinct claim is
@@ -444,7 +498,11 @@ relations, where `grep` keeps up. Two honest next paths:
 
 1. **Validate before committing.** Re-run on a larger, dispatch-heavier corpus — more dynamic `CALL`,
    deeper `XCTL` chains, less menu-hub degeneracy — where transitive reachability is a *discriminating*
-   relation. If the gap survives on a non-degenerate graph, the case strengthens a lot.
+   relation. The hub ablation (§9) was the cheap version of this test, run on the graph I already had,
+   and it gave a green-ish light to bother: the win *survived* the ablation on the dispatch-owning
+   nodes — it just stopped being broad. That's the signal that a non-degenerate corpus is worth
+   standing up; if the concentrated win holds there without a navigation shell inflating it, the case
+   strengthens a lot.
 2. **Scope the claim** as above if it's pursued at all.
 
 Either way, the study did the job it was designed to do: take a win proven in one language, carry it
@@ -467,6 +525,10 @@ a build.**
 - Second-oracle cross-check (different lineage): `oracle2-gnucobol/` — `preprocess.sh` (GnuCOBOL
   `cobc -E`) → `extract_edges.py` → `diff_oracles.py` (44/44 agreement; negative control 21/44);
   method + limits in `oracle2-gnucobol/CROSS-CHECK.md`.
+- Hub-ablation sensitivity analysis (§9): `oracle2-gnucobol/ablate_hub.py` (+ `test_ablate_hub.py`),
+  written up in `oracle2-gnucobol/ABLATION.md` (Jaccard 0.913→0.242; grep call_closure F1 0.145→0.438).
+- Modeling-review brief for a human COBOL expert: `audit/REVIEWER-BRIEF.md`; the (non-independent) AI
+  dry run that motivated the ablation: `audit/REVIEW-AI-DRYRUN.md`.
 - Questions: `select_questions.py` → `questions.jsonl` (80 across 5 strata).
 - Arms + score: `arms/` (fair-grep vs `cobol_reachability` MCP proxy), `score.py`, `run_all.sh`.
 - Full result doc with per-stratum detail: `docs/superpowers/results/2026-06-03-cobol-decomposition-findings.md`.
