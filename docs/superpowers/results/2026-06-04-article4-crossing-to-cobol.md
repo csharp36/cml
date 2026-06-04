@@ -515,6 +515,29 @@ a build.**
 
 ---
 
+### Acknowledgments
+
+The sharpest improvements in this piece came from adversarial review, and in the spirit of the
+mind-independence argument I should say exactly where. Two reviews — both, in the interest of full
+disclosure, **other Claude Opus 4.8 instances**, not the human COBOL expert the work still owes
+(`audit/REVIEWER-BRIEF.md` is the open ask) — independently converged on the same soft spot in
+decision #1 and pushed the result somewhere better:
+
+- A critical read disaggregated the 32-frozen / 23-post-fix audit questions, retired the "0 across
+  55" overclaim, and argued that **signoff-as-edge drives the win's *breadth* while the OCCURS
+  dispatch drives its *substance*** — which is the distinction §9's hub ablation set out to measure.
+- A web-grounded source review caught that the `screen → COSGN00C` edge I'd called a "signoff" is
+  mostly the **`EIBCALEN = 0` cold-start / lost-session guard** (`COBIL00C.cbl:107`,
+  `COUSR01C.cbl:78`) — navigation plumbing, not a business dependency — and flagged that the corpus's
+  user-type menu gate is vacuous in this snapshot (all `COMEN02Y` entries are `'U'`), so the
+  conditional-edge question doesn't bite here.
+
+Neither closes the load-bearing gap — they share my model lineage, so their agreement is not the
+independent validation a human practitioner would give. But they made the claim narrower, truer, and
+better-measured, and that's worth crediting plainly.
+
+---
+
 ### Appendix: reproducibility
 
 - Repo: [github.com/csharp36/cml](https://github.com/csharp36/cml). Harness: `bench/cobolA/`.
