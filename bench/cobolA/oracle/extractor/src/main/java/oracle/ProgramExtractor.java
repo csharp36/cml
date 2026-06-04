@@ -63,8 +63,9 @@ public final class ProgramExtractor {
     // (e.g. PROGRAM(CDEMO-MENU-OPT-PGMNAME(WS-OPTION))) — for the latter we capture only the base
     // identifier, which is the data-item carrying the dynamic target. We stop the name at the first
     // of ' ( ) or whitespace, so a trailing subscript "(...)" and the closing ")" are not consumed.
+    // \s* between PROGRAM and ( allows the space form: PROGRAM (...) as well as PROGRAM(...).
     private static final Pattern CICS_XFER =
-            Pattern.compile("(?i)(?:XCTL|LINK)\\s+PROGRAM\\(\\s*('?)([A-Z0-9-]+)");
+            Pattern.compile("(?i)(?:XCTL|LINK)\\s+PROGRAM\\s*\\(\\s*('?)([A-Z0-9-]+)");
     // Include '.' so a schema-qualified table (CARDDEMO.TRANSACTION_TYPE) is captured whole rather
     // than collapsed to its schema. Host vars (INTO :host) still start with ':' and are dropped below.
     private static final Pattern SQL_TABLE =
