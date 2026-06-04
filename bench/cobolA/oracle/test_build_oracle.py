@@ -169,6 +169,9 @@ class TestBuildOracle:
             "transitive_call_closure",
             "data_access",
             "copybook_fan",
+            "data_coupling",
+            "cics_txn_entry",
+            "txn_reach",
             "direct_call_edges",
         }
         assert set(o.keys()) == expected_keys
@@ -177,3 +180,102 @@ class TestBuildOracle:
         o1 = build_oracle(edges_map)
         o2 = build_oracle(edges_map)
         assert json.dumps(o1, sort_keys=True) == json.dumps(o2, sort_keys=True)
+
+
+def test_ddname_keying_decouples_same_logical_different_ddname():
+    """ddnames_by_program kwarg: same logical name, different ASSIGN ddname -> NOT coupled.
+
+    PROG_X: SELECT FILE-A ASSIGN TO DDNAME_X  (ddname = DDNAME_X)
+    PROG_Y: SELECT FILE-A ASSIGN TO DDNAME_Y  (ddname = DDNAME_Y)
+
+    Under logical-name keying (ddnames_by_program=None) both programs share
+    'FILE-A' and would be coupled.  Under ddname keying they share no physical
+    resource and must NOT be coupled.
+
+    Also asserts the reverse: PROG_Y and PROG_Z share the same ddname DDNAME_Y
+    and MUST be coupled when ddname keying is in effect.
+    """
+    edges_map = {
+        "PROG_X": {
+            "static_calls": [], "resolved_dynamic_calls": [],
+            "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+            "copybooks": [],
+            "files_read": ["FILE-A"],   # logical name
+            "files_written": [],
+            "db2_tables": [],
+        },
+        "PROG_Y": {
+            "static_calls": [], "resolved_dynamic_calls": [],
+            "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+            "copybooks": [],
+            "files_read": ["FILE-A"],   # same logical name as PROG_X
+            "files_written": [],
+            "db2_tables": [],
+        },
+        "PROG_Z": {
+            "static_calls": [], "resolved_dynamic_calls": [],
+            "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+            "copybooks": [],
+            "files_read": ["FILE-B"],   # different logical name
+            "files_written": [],
+            "db2_tables": [],
+        },
+    }
+    # Physical ddnames: X -> DDNAME_X, Y and Z -> DDNAME_Y (shared)
+    dbn = {
+        "PROG_X": {"DDNAME_X"},
+        "PROG_Y": {"DDNAME_Y"},
+        "PROG_Z": {"DDNAME_Y"},
+    }
+
+    # --- Without ddname keying (old behaviour) ---
+    oracle_logical = build_oracle(edges_map)
+    # PROG_X and PROG_Y both read FILE-A → coupled under logical keying
+    assert "PROG_Y" in oracle_logical["data_coupling"]["PROG_X"], \
+        "logical keying should couple PROG_X/PROG_Y (sanity check)"
+
+    # --- With ddname keying (new behaviour) ---
+    oracle_ddname = build_oracle(edges_map, ddnames_by_program=dbn)
+    dc = oracle_ddname["data_coupling"]
+
+    # PROG_X has DDNAME_X; PROG_Y has DDNAME_Y — no shared physical resource
+    assert "PROG_Y" not in dc["PROG_X"], \
+        "ddname keying must NOT couple PROG_X and PROG_Y (different physical files)"
+    assert "PROG_X" not in dc["PROG_Y"], \
+        "ddname keying must NOT couple PROG_Y and PROG_X"
+
+    # PROG_Y and PROG_Z both use DDNAME_Y — they MUST be coupled
+    assert "PROG_Z" in dc["PROG_Y"], \
+        "ddname keying must couple PROG_Y and PROG_Z (same ddname DDNAME_Y)"
+    assert "PROG_Y" in dc["PROG_Z"], \
+        "ddname keying must couple PROG_Z and PROG_Y"
+
+    # Resources under ddname keying are ddnames, not logical names
+    assert "DDNAME_X" in oracle_ddname["resources"]
+    assert "DDNAME_Y" in oracle_ddname["resources"]
+    assert "FILE-A" not in oracle_ddname["resources"]
+    assert "FILE-B" not in oracle_ddname["resources"]
+
+
+def test_build_oracle_adds_txn_and_coupling_strata():
+    edges_map = {
+        "COMEN01C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": ["COBIL00C"],
+                     "copybooks": [], "files_read": [], "files_written": [], "db2_tables": []},
+        "COBIL00C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+                     "copybooks": [], "files_read": ["BILLFILE"], "files_written": [],
+                     "db2_tables": []},
+        "CBTRN02C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+                     "copybooks": [], "files_read": ["BILLFILE"], "files_written": [],
+                     "db2_tables": []},
+    }
+    txn_entry = {"CM00": "COMEN01C", "CX99": "NOTINCORPUS"}
+    oracle = build_oracle(edges_map, txn_entry)
+
+    assert oracle["cics_txn_entry"] == {"CM00": "COMEN01C"}
+    assert oracle["txn_reach"]["CM00"] == ["COBIL00C", "COMEN01C"]
+    assert oracle["data_coupling"]["COBIL00C"] == ["CBTRN02C"]
+    assert oracle["data_coupling"]["CBTRN02C"] == ["COBIL00C"]
+    assert oracle["data_coupling"]["COMEN01C"] == []

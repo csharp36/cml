@@ -46,51 +46,41 @@
     "PAUDBUNL"
   ],
   "resources": [
-    "ACCOUNT-FILE",
-    "ACCOUNT-INPUT",
-    "ACCOUNT-RECORD",
-    "ACCT-FILE",
-    "ACCTFILE-FILE",
-    "ARR-ARRAY-REC",
-    "CARD-INPUT",
-    "CARD-RECORD",
-    "CARD-XREF-RECORD",
+    "ACCTFILE",
+    "ACCTOUT",
+    "ARRYFILE",
     "CARDDEMO.AUTHFRDS",
     "CARDDEMO.TRANSACTION_TYPE",
-    "CARDFILE-FILE",
-    "CUST-FILE",
-    "CUSTFILE-FILE",
-    "CUSTOMER-INPUT",
-    "CUSTOMER-RECORD",
-    "DALYTRAN-FILE",
-    "DATE-PARMS-FILE",
-    "DISCGRP-FILE",
-    "ERROR-OUTPUT-RECORD",
-    "EXPORT-INPUT",
-    "EXPORT-OUTPUT-RECORD",
-    "FD-HTMLFILE-REC",
-    "FD-REJS-RECORD",
-    "FD-REPTFILE-REC",
-    "FD-STMTFILE-REC",
-    "FD-TRAN-CAT-BAL-RECORD",
-    "FD-TRANFILE-REC",
+    "CARDFILE",
+    "CARDOUT",
+    "CARDXREF",
+    "CUSTFILE",
+    "CUSTOUT",
+    "DALYREJS",
+    "DALYTRAN",
+    "DATEPARM",
+    "DISCGRP",
+    "ERROUT",
+    "EXPFILE",
+    "HTMLFILE",
     "INFILE1",
     "INFILE2",
-    "OPFIL1-REC",
-    "OPFIL2-REC",
-    "OUT-ACCT-REC",
-    "TCATBAL-FILE",
-    "TR-RECORD",
-    "TRAN-RECORD",
-    "TRANCATG-FILE",
-    "TRANSACT-FILE",
-    "TRANSACTION-INPUT",
-    "TRANTYPE-FILE",
-    "TRNX-FILE",
-    "VBR-REC",
-    "XREF-FILE",
-    "XREF-INPUT",
-    "XREFFILE-FILE"
+    "INPFILE",
+    "OUTFIL1",
+    "OUTFIL2",
+    "OUTFILE",
+    "STMTFILE",
+    "TCATBALF",
+    "TRANCATG",
+    "TRANFILE",
+    "TRANREPT",
+    "TRANSACT",
+    "TRANTYPE",
+    "TRNXFILE",
+    "TRNXOUT",
+    "VBRCFILE",
+    "XREFFILE",
+    "XREFOUT"
   ],
   "copybooks": [
     "CCPAUERY",
@@ -206,41 +196,183 @@
     ],
     "COACTUPC": [
       "CEEDAYS",
-      "CSUTLDTC"
-    ],
-    "COACTVWC": [],
-    "COADM01C": [
-      "COSGN00C",
-      "COTRTLIC",
-      "COTRTUPC",
-      "COUSR00C",
-      "COUSR01C",
-      "COUSR02C",
-      "COUSR03C"
-    ],
-    "COBIL00C": [
-      "CEEDAYS",
-      "COACTUPC",
       "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COMEN01C",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "CORPT00C",
       "COSGN00C",
       "COTRN00C",
       "COTRN01C",
       "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COACTVWC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COADM01C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COBIL00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
     "COBSWAIT": [
       "MVSWAIT"
     ],
     "COBTUPDT": [],
-    "COCRDLIC": [],
-    "COCRDSLC": [],
-    "COCRDUPC": [],
+    "COCRDLIC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COCRDSLC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COCRDUPC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
     "CODATE01": [
       "MQCLOSE",
       "MQGET",
@@ -251,128 +383,355 @@
       "CEEDAYS",
       "COACTUPC",
       "COACTVWC",
+      "COADM01C",
       "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "CORPT00C",
       "COSGN00C",
       "COTRN00C",
       "COTRN01C",
       "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
     "COPAUA0C": [
       "MQOPEN"
     ],
     "COPAUS0C": [
-      "COSGN00C"
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
     ],
-    "COPAUS1C": [],
+    "COPAUS1C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
     "COPAUS2C": [],
     "CORPT00C": [
       "CEEDAYS",
       "COACTUPC",
       "COACTVWC",
+      "COADM01C",
       "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COMEN01C",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "COSGN00C",
       "COTRN00C",
       "COTRN01C",
       "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
-    "COSGN00C": [],
-    "COTRN00C": [
+    "COSGN00C": [
       "CEEDAYS",
       "COACTUPC",
       "COACTVWC",
+      "COADM01C",
       "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COMEN01C",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COTRN00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "CORPT00C",
       "COSGN00C",
       "COTRN01C",
       "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
     "COTRN01C": [
       "CEEDAYS",
       "COACTUPC",
       "COACTVWC",
+      "COADM01C",
       "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COMEN01C",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "CORPT00C",
       "COSGN00C",
       "COTRN00C",
       "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
     "COTRN02C": [
       "CEEDAYS",
       "COACTUPC",
       "COACTVWC",
+      "COADM01C",
       "COBIL00C",
       "COCRDLIC",
       "COCRDSLC",
       "COCRDUPC",
       "COMEN01C",
       "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
       "CORPT00C",
       "COSGN00C",
       "COTRN00C",
       "COTRN01C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
       "CSUTLDTC"
     ],
-    "COTRTLIC": [],
-    "COTRTUPC": [],
-    "COUSR00C": [
+    "COTRTLIC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
       "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
       "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COTRTUPC": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "COUSR00C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
       "COTRTLIC",
       "COTRTUPC",
       "COUSR01C",
       "COUSR02C",
-      "COUSR03C"
+      "COUSR03C",
+      "CSUTLDTC"
     ],
     "COUSR01C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
       "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
       "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
       "COTRTLIC",
       "COTRTUPC",
       "COUSR00C",
       "COUSR02C",
-      "COUSR03C"
+      "COUSR03C",
+      "CSUTLDTC"
     ],
     "COUSR02C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
       "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
       "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
       "COTRTLIC",
       "COTRTUPC",
       "COUSR00C",
       "COUSR01C",
-      "COUSR03C"
+      "COUSR03C",
+      "CSUTLDTC"
     ],
     "COUSR03C": [
+      "CEEDAYS",
+      "COACTUPC",
+      "COACTVWC",
       "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
       "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
       "COTRTLIC",
       "COTRTUPC",
       "COUSR00C",
       "COUSR01C",
-      "COUSR02C"
+      "COUSR02C",
+      "CSUTLDTC"
     ],
     "CSUTLDTC": [
       "CEEDAYS"
@@ -388,34 +747,19 @@
     ]
   },
   "data_access": {
-    "ACCOUNT-FILE": [
+    "ACCTFILE": [
+      "CBACT01C",
       "CBACT04C",
+      "CBEXPORT",
+      "CBSTM03B",
       "CBTRN01C",
       "CBTRN02C"
     ],
-    "ACCOUNT-INPUT": [
-      "CBEXPORT"
-    ],
-    "ACCOUNT-RECORD": [
+    "ACCTOUT": [
       "CBIMPORT"
     ],
-    "ACCT-FILE": [
-      "CBSTM03B"
-    ],
-    "ACCTFILE-FILE": [
+    "ARRYFILE": [
       "CBACT01C"
-    ],
-    "ARR-ARRAY-REC": [
-      "CBACT01C"
-    ],
-    "CARD-INPUT": [
-      "CBEXPORT"
-    ],
-    "CARD-RECORD": [
-      "CBIMPORT"
-    ],
-    "CARD-XREF-RECORD": [
-      "CBIMPORT"
     ],
     "CARDDEMO.AUTHFRDS": [
       "COPAUS2C"
@@ -425,58 +769,48 @@
       "COTRTLIC",
       "COTRTUPC"
     ],
-    "CARDFILE-FILE": [
-      "CBACT02C"
+    "CARDFILE": [
+      "CBACT02C",
+      "CBEXPORT",
+      "CBTRN01C"
     ],
-    "CUST-FILE": [
-      "CBSTM03B"
-    ],
-    "CUSTFILE-FILE": [
-      "CBCUS01C"
-    ],
-    "CUSTOMER-INPUT": [
-      "CBEXPORT"
-    ],
-    "CUSTOMER-RECORD": [
+    "CARDOUT": [
       "CBIMPORT"
     ],
-    "DALYTRAN-FILE": [
+    "CARDXREF": [
+      "CBTRN03C"
+    ],
+    "CUSTFILE": [
+      "CBCUS01C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C"
+    ],
+    "CUSTOUT": [
+      "CBIMPORT"
+    ],
+    "DALYREJS": [
+      "CBTRN02C"
+    ],
+    "DALYTRAN": [
       "CBTRN01C",
       "CBTRN02C"
     ],
-    "DATE-PARMS-FILE": [
+    "DATEPARM": [
       "CBTRN03C"
     ],
-    "DISCGRP-FILE": [
+    "DISCGRP": [
       "CBACT04C"
     ],
-    "ERROR-OUTPUT-RECORD": [
+    "ERROUT": [
       "CBIMPORT"
     ],
-    "EXPORT-INPUT": [
+    "EXPFILE": [
+      "CBEXPORT",
       "CBIMPORT"
     ],
-    "EXPORT-OUTPUT-RECORD": [
-      "CBEXPORT"
-    ],
-    "FD-HTMLFILE-REC": [
+    "HTMLFILE": [
       "CBSTM03A"
-    ],
-    "FD-REJS-RECORD": [
-      "CBTRN02C"
-    ],
-    "FD-REPTFILE-REC": [
-      "CBTRN03C"
-    ],
-    "FD-STMTFILE-REC": [
-      "CBSTM03A"
-    ],
-    "FD-TRAN-CAT-BAL-RECORD": [
-      "CBTRN02C"
-    ],
-    "FD-TRANFILE-REC": [
-      "CBACT04C",
-      "CBTRN02C"
     ],
     "INFILE1": [
       "PAUDBLOD"
@@ -484,55 +818,62 @@
     "INFILE2": [
       "PAUDBLOD"
     ],
-    "OPFIL1-REC": [
+    "INPFILE": [
+      "COBTUPDT"
+    ],
+    "OUTFIL1": [
       "PAUDBUNL"
     ],
-    "OPFIL2-REC": [
+    "OUTFIL2": [
       "PAUDBUNL"
     ],
-    "OUT-ACCT-REC": [
+    "OUTFILE": [
       "CBACT01C"
     ],
-    "TCATBAL-FILE": [
+    "STMTFILE": [
+      "CBSTM03A"
+    ],
+    "TCATBALF": [
       "CBACT04C",
       "CBTRN02C"
     ],
-    "TR-RECORD": [
-      "COBTUPDT"
-    ],
-    "TRAN-RECORD": [
-      "CBIMPORT"
-    ],
-    "TRANCATG-FILE": [
+    "TRANCATG": [
       "CBTRN03C"
     ],
-    "TRANSACT-FILE": [
-      "CBTRN03C"
-    ],
-    "TRANSACTION-INPUT": [
-      "CBEXPORT"
-    ],
-    "TRANTYPE-FILE": [
-      "CBTRN03C"
-    ],
-    "TRNX-FILE": [
-      "CBSTM03B"
-    ],
-    "VBR-REC": [
-      "CBACT01C"
-    ],
-    "XREF-FILE": [
-      "CBACT04C",
-      "CBSTM03B",
+    "TRANFILE": [
       "CBTRN01C",
       "CBTRN02C",
       "CBTRN03C"
     ],
-    "XREF-INPUT": [
+    "TRANREPT": [
+      "CBTRN03C"
+    ],
+    "TRANSACT": [
+      "CBACT04C",
       "CBEXPORT"
     ],
-    "XREFFILE-FILE": [
-      "CBACT03C"
+    "TRANTYPE": [
+      "CBTRN03C"
+    ],
+    "TRNXFILE": [
+      "CBSTM03B"
+    ],
+    "TRNXOUT": [
+      "CBIMPORT"
+    ],
+    "VBRCFILE": [
+      "CBACT01C"
+    ],
+    "XREFFILE": [
+      "CBACT03C",
+      "CBACT04C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "XREFOUT": [
+      "CBIMPORT"
     ]
   },
   "copybook_fan": {
@@ -968,6 +1309,690 @@
       "CODATE01"
     ]
   },
+  "data_coupling": {
+    "CBACT01C": [
+      "CBACT04C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CBACT02C": [
+      "CBEXPORT",
+      "CBTRN01C"
+    ],
+    "CBACT03C": [
+      "CBACT04C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CBACT04C": [
+      "CBACT01C",
+      "CBACT03C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CBCUS01C": [
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C"
+    ],
+    "CBEXPORT": [
+      "CBACT01C",
+      "CBACT02C",
+      "CBACT03C",
+      "CBACT04C",
+      "CBCUS01C",
+      "CBIMPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CBIMPORT": [
+      "CBEXPORT"
+    ],
+    "CBPAUP0C": [],
+    "CBSTM03A": [],
+    "CBSTM03B": [
+      "CBACT01C",
+      "CBACT03C",
+      "CBACT04C",
+      "CBCUS01C",
+      "CBEXPORT",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "CBTRN01C": [
+      "CBACT01C",
+      "CBACT02C",
+      "CBACT03C",
+      "CBACT04C",
+      "CBCUS01C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN02C",
+      "CBTRN03C"
+    ],
+    "CBTRN02C": [
+      "CBACT01C",
+      "CBACT03C",
+      "CBACT04C",
+      "CBEXPORT",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN03C"
+    ],
+    "CBTRN03C": [
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "COACCT01": [],
+    "COACTUPC": [],
+    "COACTVWC": [],
+    "COADM01C": [],
+    "COBIL00C": [],
+    "COBSWAIT": [],
+    "COBTUPDT": [
+      "COTRTLIC",
+      "COTRTUPC"
+    ],
+    "COCRDLIC": [],
+    "COCRDSLC": [],
+    "COCRDUPC": [],
+    "CODATE01": [],
+    "COMEN01C": [],
+    "COPAUA0C": [],
+    "COPAUS0C": [],
+    "COPAUS1C": [],
+    "COPAUS2C": [],
+    "CORPT00C": [],
+    "COSGN00C": [],
+    "COTRN00C": [],
+    "COTRN01C": [],
+    "COTRN02C": [],
+    "COTRTLIC": [
+      "COBTUPDT",
+      "COTRTUPC"
+    ],
+    "COTRTUPC": [
+      "COBTUPDT",
+      "COTRTLIC"
+    ],
+    "COUSR00C": [],
+    "COUSR01C": [],
+    "COUSR02C": [],
+    "COUSR03C": [],
+    "CSUTLDTC": [],
+    "DBUNLDGS": [],
+    "PAUDBLOD": [],
+    "PAUDBUNL": []
+  },
+  "cics_txn_entry": {
+    "CA00": "COADM01C",
+    "CAUP": "COACTUPC",
+    "CAVW": "COACTVWC",
+    "CB00": "COBIL00C",
+    "CC00": "COSGN00C",
+    "CCDL": "COCRDSLC",
+    "CCLI": "COCRDLIC",
+    "CCUP": "COCRDUPC",
+    "CDRA": "COACCT01",
+    "CDRD": "CODATE01",
+    "CM00": "COMEN01C",
+    "CP00": "COPAUA0C",
+    "CPVD": "COPAUS1C",
+    "CPVS": "COPAUS0C",
+    "CR00": "CORPT00C",
+    "CT00": "COTRN00C",
+    "CT01": "COTRN01C",
+    "CT02": "COTRN02C",
+    "CTLI": "COTRTLIC",
+    "CTTU": "COTRTUPC",
+    "CU00": "COUSR00C",
+    "CU01": "COUSR01C",
+    "CU02": "COUSR02C",
+    "CU03": "COUSR03C"
+  },
+  "txn_reach": {
+    "CA00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CAUP": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CAVW": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CB00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CC00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CCDL": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CCLI": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CCUP": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CDRA": [
+      "COACCT01"
+    ],
+    "CDRD": [
+      "CODATE01"
+    ],
+    "CM00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CP00": [
+      "COPAUA0C"
+    ],
+    "CPVD": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CPVS": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CR00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CT00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CT01": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CT02": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CTLI": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CTTU": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CU00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CU01": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CU02": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ],
+    "CU03": [
+      "COACTUPC",
+      "COACTVWC",
+      "COADM01C",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
+      "COPAUS2C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C",
+      "CSUTLDTC"
+    ]
+  },
   "direct_call_edges": {
     "CBACT01C": [
       "CEE3ABD",
@@ -1013,9 +2038,14 @@
       "MQPUT"
     ],
     "COACTUPC": [
+      "COACTUPC",
+      "COMEN01C",
       "CSUTLDTC"
     ],
-    "COACTVWC": [],
+    "COACTVWC": [
+      "COACTVWC",
+      "COMEN01C"
+    ],
     "COADM01C": [
       "COSGN00C",
       "COTRTLIC",
@@ -1026,6 +2056,7 @@
       "COUSR03C"
     ],
     "COBIL00C": [
+      "COBIL00C",
       "COMEN01C",
       "COSGN00C"
     ],
@@ -1033,9 +2064,20 @@
       "MVSWAIT"
     ],
     "COBTUPDT": [],
-    "COCRDLIC": [],
-    "COCRDSLC": [],
-    "COCRDUPC": [],
+    "COCRDLIC": [
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C"
+    ],
+    "COCRDSLC": [
+      "COCRDSLC",
+      "COMEN01C"
+    ],
+    "COCRDUPC": [
+      "COCRDUPC",
+      "COMEN01C"
+    ],
     "CODATE01": [
       "MQCLOSE",
       "MQGET",
@@ -1060,16 +2102,25 @@
       "MQOPEN"
     ],
     "COPAUS0C": [
+      "COMEN01C",
+      "COPAUS0C",
+      "COPAUS1C",
       "COSGN00C"
     ],
-    "COPAUS1C": [],
+    "COPAUS1C": [
+      "COPAUS0C",
+      "COPAUS2C"
+    ],
     "COPAUS2C": [],
     "CORPT00C": [
       "COMEN01C",
       "COSGN00C",
       "CSUTLDTC"
     ],
-    "COSGN00C": [],
+    "COSGN00C": [
+      "COADM01C",
+      "COMEN01C"
+    ],
     "COTRN00C": [
       "COMEN01C",
       "COSGN00C",
@@ -1078,15 +2129,24 @@
     "COTRN01C": [
       "COMEN01C",
       "COSGN00C",
-      "COTRN00C"
+      "COTRN00C",
+      "COTRN01C"
     ],
     "COTRN02C": [
       "COMEN01C",
       "COSGN00C",
+      "COTRN02C",
       "CSUTLDTC"
     ],
-    "COTRTLIC": [],
-    "COTRTUPC": [],
+    "COTRTLIC": [
+      "COADM01C",
+      "COTRTLIC",
+      "COTRTUPC"
+    ],
+    "COTRTUPC": [
+      "COADM01C",
+      "COTRTUPC"
+    ],
     "COUSR00C": [
       "COADM01C",
       "COSGN00C",
@@ -1099,11 +2159,13 @@
     ],
     "COUSR02C": [
       "COADM01C",
-      "COSGN00C"
+      "COSGN00C",
+      "COUSR02C"
     ],
     "COUSR03C": [
       "COADM01C",
-      "COSGN00C"
+      "COSGN00C",
+      "COUSR03C"
     ],
     "CSUTLDTC": [
       "CEEDAYS"

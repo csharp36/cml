@@ -9,6 +9,7 @@ from graph import (
     data_access_set,
     copybook_fan,
     shared_data_coupling,
+    data_coupling_neighbors,
 )
 
 # ---------------------------------------------------------------------------
@@ -289,3 +290,31 @@ class TestSharedDataCoupling:
         # Intersection: FILE1, FILE2, FILE3
         result = shared_data_coupling(EDGES_MAP, {"A", "D"}, {"B", "C"})
         assert result == {"FILE1", "FILE2", "FILE3"}
+
+
+# ---------------------------------------------------------------------------
+# data_coupling_neighbors
+# ---------------------------------------------------------------------------
+
+class TestDataCouplingNeighbors:
+    def test_data_coupling_neighbors_shares_file_or_db2_only(self):
+        edges = {
+            "A": {"files_read": ["F1"], "files_written": [], "db2_tables": [], "copybooks": ["SHARED"]},
+            "B": {"files_read": [], "files_written": ["F1"], "db2_tables": [], "copybooks": ["SHARED"]},
+            "C": {"files_read": [], "files_written": [], "db2_tables": ["T1"], "copybooks": ["SHARED"]},
+            "D": {"files_read": [], "files_written": [], "db2_tables": ["T1"], "copybooks": []},
+        }
+        n = data_coupling_neighbors(edges)
+        assert n["A"] == {"B"}        # A,B share file F1
+        assert n["B"] == {"A"}
+        assert n["C"] == {"D"}        # C,D share DB2 table T1
+        assert n["D"] == {"C"}
+        # copybook-only sharing must NOT create coupling (that is stratum 4)
+        assert "C" not in n["A"]
+
+
+def test_transitive_closure_excludes_direct_self_transfer():
+    # A program that XCTLs to itself (redisplay-current-screen) must not appear
+    # in its own closure. B is a real other target.
+    edges = {"A": {"static_xctl_link": ["A", "B"]}, "B": {"static_xctl_link": []}}
+    assert transitive_call_closure(edges, "A") == {"B"}

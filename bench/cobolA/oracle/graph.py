@@ -8,7 +8,7 @@ edges_map: dict[str, dict]
       copybooks, files_read, files_written, db2_tables
 """
 from __future__ import annotations
-from collections import deque
+from collections import deque, defaultdict
 
 
 def call_edges(prog_obj: dict) -> set[str]:
@@ -38,9 +38,11 @@ def transitive_call_closure(edges_map: dict[str, dict], start: str) -> set[str]:
     visited: set[str] = set()
     queue: deque[str] = deque()
 
-    # Seed from start's direct neighbours without adding start to visited yet
+    # Seed from start's direct neighbours. Exclude a direct self-transfer
+    # (a program may XCTL to itself, e.g. a "redisplay current screen" path):
+    # by definition the start is never a member of its own closure.
     for target in call_edges(edges_map.get(start, {})):
-        if target not in visited:
+        if target != start and target not in visited:
             visited.add(target)
             queue.append(target)
 
@@ -98,3 +100,22 @@ def shared_data_coupling(
             resources_b |= _resources(edges_map[pid])
 
     return resources_a & resources_b
+
+
+def data_coupling_neighbors(edges_map: dict[str, dict]) -> dict[str, set[str]]:
+    """Return {program: set of OTHER programs sharing >=1 file/DB2 resource}.
+
+    Copybooks are deliberately excluded — shared record layouts are stratum 4;
+    stratum 3 is coupling through a mutable data store, which is what resists a
+    clean service split.
+    """
+    res_to_progs: dict[str, set[str]] = defaultdict(set)
+    for pid, obj in edges_map.items():
+        for res in _resources(obj):
+            res_to_progs[res].add(pid)
+
+    neighbors: dict[str, set[str]] = {pid: set() for pid in edges_map}
+    for group in res_to_progs.values():
+        for pid in group:
+            neighbors[pid] |= group - {pid}
+    return neighbors

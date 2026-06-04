@@ -3,3 +3,6 @@ __pycache__/
 .pytest_cache/
 oracle/extractor/.gradle/
 oracle/extractor/build/
+# Un-ignore results dir but keep intermediate JSONL out
+!results/
+results/*.results.jsonl
