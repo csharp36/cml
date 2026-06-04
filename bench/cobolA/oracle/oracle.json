@@ -968,6 +968,301 @@
       "CODATE01"
     ]
   },
+  "data_coupling": {
+    "CBACT01C": [],
+    "CBACT02C": [],
+    "CBACT03C": [],
+    "CBACT04C": [
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C",
+      "CBTRN03C"
+    ],
+    "CBCUS01C": [],
+    "CBEXPORT": [],
+    "CBIMPORT": [],
+    "CBPAUP0C": [],
+    "CBSTM03A": [],
+    "CBSTM03B": [
+      "CBACT04C",
+      "CBTRN01C",
+      "CBTRN02C",
+      "CBTRN03C"
+    ],
+    "CBTRN01C": [
+      "CBACT04C",
+      "CBSTM03B",
+      "CBTRN02C",
+      "CBTRN03C"
+    ],
+    "CBTRN02C": [
+      "CBACT04C",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN03C"
+    ],
+    "CBTRN03C": [
+      "CBACT04C",
+      "CBSTM03B",
+      "CBTRN01C",
+      "CBTRN02C"
+    ],
+    "COACCT01": [],
+    "COACTUPC": [],
+    "COACTVWC": [],
+    "COADM01C": [],
+    "COBIL00C": [],
+    "COBSWAIT": [],
+    "COBTUPDT": [
+      "COTRTLIC",
+      "COTRTUPC"
+    ],
+    "COCRDLIC": [],
+    "COCRDSLC": [],
+    "COCRDUPC": [],
+    "CODATE01": [],
+    "COMEN01C": [],
+    "COPAUA0C": [],
+    "COPAUS0C": [],
+    "COPAUS1C": [],
+    "COPAUS2C": [],
+    "CORPT00C": [],
+    "COSGN00C": [],
+    "COTRN00C": [],
+    "COTRN01C": [],
+    "COTRN02C": [],
+    "COTRTLIC": [
+      "COBTUPDT",
+      "COTRTUPC"
+    ],
+    "COTRTUPC": [
+      "COBTUPDT",
+      "COTRTLIC"
+    ],
+    "COUSR00C": [],
+    "COUSR01C": [],
+    "COUSR02C": [],
+    "COUSR03C": [],
+    "CSUTLDTC": [],
+    "DBUNLDGS": [],
+    "PAUDBLOD": [],
+    "PAUDBUNL": []
+  },
+  "cics_txn_entry": {
+    "CA00": "COADM01C",
+    "CAUP": "COACTUPC",
+    "CAVW": "COACTVWC",
+    "CB00": "COBIL00C",
+    "CC00": "COSGN00C",
+    "CCDL": "COCRDSLC",
+    "CCLI": "COCRDLIC",
+    "CCUP": "COCRDUPC",
+    "CDRA": "COACCT01",
+    "CDRD": "CODATE01",
+    "CM00": "COMEN01C",
+    "CP00": "COPAUA0C",
+    "CPVD": "COPAUS1C",
+    "CPVS": "COPAUS0C",
+    "CR00": "CORPT00C",
+    "CT00": "COTRN00C",
+    "CT01": "COTRN01C",
+    "CT02": "COTRN02C",
+    "CTLI": "COTRTLIC",
+    "CTTU": "COTRTUPC",
+    "CU00": "COUSR00C",
+    "CU01": "COUSR01C",
+    "CU02": "COUSR02C",
+    "CU03": "COUSR03C"
+  },
+  "txn_reach": {
+    "CA00": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CAUP": [
+      "COACTUPC",
+      "CSUTLDTC"
+    ],
+    "CAVW": [
+      "COACTVWC"
+    ],
+    "CB00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CC00": [
+      "COSGN00C"
+    ],
+    "CCDL": [
+      "COCRDSLC"
+    ],
+    "CCLI": [
+      "COCRDLIC"
+    ],
+    "CCUP": [
+      "COCRDUPC"
+    ],
+    "CDRA": [
+      "COACCT01"
+    ],
+    "CDRD": [
+      "CODATE01"
+    ],
+    "CM00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CP00": [
+      "COPAUA0C"
+    ],
+    "CPVD": [
+      "COPAUS1C"
+    ],
+    "CPVS": [
+      "COPAUS0C",
+      "COSGN00C"
+    ],
+    "CR00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CT00": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CT01": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CT02": [
+      "COACTUPC",
+      "COACTVWC",
+      "COBIL00C",
+      "COCRDLIC",
+      "COCRDSLC",
+      "COCRDUPC",
+      "COMEN01C",
+      "COPAUS0C",
+      "CORPT00C",
+      "COSGN00C",
+      "COTRN00C",
+      "COTRN01C",
+      "COTRN02C",
+      "CSUTLDTC"
+    ],
+    "CTLI": [
+      "COTRTLIC"
+    ],
+    "CTTU": [
+      "COTRTUPC"
+    ],
+    "CU00": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CU01": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CU02": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ],
+    "CU03": [
+      "COADM01C",
+      "COSGN00C",
+      "COTRTLIC",
+      "COTRTUPC",
+      "COUSR00C",
+      "COUSR01C",
+      "COUSR02C",
+      "COUSR03C"
+    ]
+  },
   "direct_call_edges": {
     "CBACT01C": [
       "CEE3ABD",

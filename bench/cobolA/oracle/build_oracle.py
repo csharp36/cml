@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-from graph import call_edges, transitive_call_closure, copybook_fan
+from graph import call_edges, transitive_call_closure, copybook_fan, data_coupling_neighbors
 
 
 # ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ def load_edges(path: str) -> dict[str, dict]:
 # Core builder
 # ---------------------------------------------------------------------------
 
-def build_oracle(edges_map: dict[str, dict]) -> dict:
+def build_oracle(edges_map: dict[str, dict], txn_entry: dict[str, str] | None = None) -> dict:
     """Pre-compute all oracle strata from edges_map.
 
     Returns a dict with:
@@ -40,10 +40,15 @@ def build_oracle(edges_map: dict[str, dict]) -> dict:
       transitive_call_closure  — {pid: sorted(closure)}
       data_access              — {resource: sorted(program_ids)}
       copybook_fan             — {copybook: sorted(program_ids)}
+      data_coupling            — {pid: sorted(peers sharing >=1 file/DB2)}
+      cics_txn_entry           — {txn: entry program} (corpus-filtered)
+      txn_reach                — {txn: sorted(reachable programs)}
       direct_call_edges        — {pid: sorted(call_edges)}   (for reference/debug)
     """
     # ---- programs --------------------------------------------------------
     programs = sorted(edges_map.keys())
+    prog_set = set(edges_map.keys())
+    txn_entry = txn_entry or {}
 
     # ---- resources (files + db2) -----------------------------------------
     all_resources: set[str] = set()
@@ -85,6 +90,23 @@ def build_oracle(edges_map: dict[str, dict]) -> dict:
         cb: sorted(pids) for cb, pids in sorted(raw_fan.items())
     }
 
+    # ---- data coupling (file/DB2), corpus-filtered ----------------------
+    neigh = data_coupling_neighbors(edges_map)
+    data_coupling: dict[str, list[str]] = {
+        pid: sorted(neigh[pid] & prog_set) for pid in programs
+    }
+
+    # ---- CICS txn -> entry program (corpus-filtered) --------------------
+    cics_txn_entry: dict[str, str] = {
+        txn: pgm for txn, pgm in sorted(txn_entry.items()) if pgm in prog_set
+    }
+
+    # ---- txn -> reachable programs = {entry} U closure(entry) -----------
+    txn_reach: dict[str, list[str]] = {}
+    for txn, entry in cics_txn_entry.items():
+        reach = ({entry} | transitive_call_closure(edges_map, entry)) & prog_set
+        txn_reach[txn] = sorted(reach)
+
     # ---- direct call edges (per program) --------------------------------
     direct: dict[str, list[str]] = {
         pid: sorted(call_edges(obj))
@@ -100,6 +122,9 @@ def build_oracle(edges_map: dict[str, dict]) -> dict:
         "transitive_call_closure": transitive,
         "data_access": data_access,
         "copybook_fan": cb_fan,
+        "data_coupling": data_coupling,
+        "cics_txn_entry": cics_txn_entry,
+        "txn_reach": txn_reach,
         "direct_call_edges": direct,
     }
 
@@ -109,24 +134,19 @@ def build_oracle(edges_map: dict[str, dict]) -> dict:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <raw-edges.json> <oracle.json>", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print(f"Usage: {sys.argv[0]} <raw-edges.json> <oracle.json> [corpus_dir]", file=sys.stderr)
         sys.exit(1)
-
     in_path, out_path = sys.argv[1], sys.argv[2]
+    corpus_dir = sys.argv[3] if len(sys.argv) == 4 else "../corpus"
     edges_map = load_edges(in_path)
-    oracle = build_oracle(edges_map)
-
-    Path(out_path).write_text(
-        json.dumps(oracle, indent=2, sort_keys=False) + "\n",
-        encoding="utf-8",
-    )
-    print(
-        f"oracle.json written: {len(oracle['programs'])} programs, "
-        f"{len(oracle['resources'])} resources, "
-        f"{len(oracle['copybooks'])} copybooks",
-        file=sys.stderr,
-    )
+    from csd import parse_csd_dir
+    txn_entry = parse_csd_dir(corpus_dir)
+    oracle = build_oracle(edges_map, txn_entry)
+    Path(out_path).write_text(json.dumps(oracle, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    print(f"oracle.json written: {len(oracle['programs'])} programs, "
+          f"{len(oracle['resources'])} resources, {len(oracle['copybooks'])} copybooks, "
+          f"{len(oracle['cics_txn_entry'])} txns", file=sys.stderr)
 
 
 if __name__ == "__main__":

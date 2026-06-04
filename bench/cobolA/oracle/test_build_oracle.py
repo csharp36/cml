@@ -169,6 +169,9 @@ class TestBuildOracle:
             "transitive_call_closure",
             "data_access",
             "copybook_fan",
+            "data_coupling",
+            "cics_txn_entry",
+            "txn_reach",
             "direct_call_edges",
         }
         assert set(o.keys()) == expected_keys
@@ -177,3 +180,27 @@ class TestBuildOracle:
         o1 = build_oracle(edges_map)
         o2 = build_oracle(edges_map)
         assert json.dumps(o1, sort_keys=True) == json.dumps(o2, sort_keys=True)
+
+
+def test_build_oracle_adds_txn_and_coupling_strata():
+    edges_map = {
+        "COMEN01C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": ["COBIL00C"],
+                     "copybooks": [], "files_read": [], "files_written": [], "db2_tables": []},
+        "COBIL00C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+                     "copybooks": [], "files_read": ["BILLFILE"], "files_written": [],
+                     "db2_tables": []},
+        "CBTRN02C": {"static_calls": [], "resolved_dynamic_calls": [],
+                     "static_xctl_link": [], "resolved_dynamic_xctl_link": [],
+                     "copybooks": [], "files_read": ["BILLFILE"], "files_written": [],
+                     "db2_tables": []},
+    }
+    txn_entry = {"CM00": "COMEN01C", "CX99": "NOTINCORPUS"}
+    oracle = build_oracle(edges_map, txn_entry)
+
+    assert oracle["cics_txn_entry"] == {"CM00": "COMEN01C"}
+    assert oracle["txn_reach"]["CM00"] == ["COBIL00C", "COMEN01C"]
+    assert oracle["data_coupling"]["COBIL00C"] == ["CBTRN02C"]
+    assert oracle["data_coupling"]["CBTRN02C"] == ["COBIL00C"]
+    assert oracle["data_coupling"]["COMEN01C"] == []
