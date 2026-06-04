@@ -3,10 +3,9 @@
 ![On the left, a familiar modern type-graph constellation glows under the index's light. A
 hard seam runs down the middle. On the right, the same light falls on a fixed-format COBOL
 deck — most of it stays dark, but one bright cluster (a CICS menu's dispatch table) lights up
-where grep's flashlight couldn't reach.](article4-hero.png)
+where grep's flashlight couldn't reach.](article4-hero.jpeg)
 
-*[FIGURE: hero — described in the alt-text above. Caption: "The Java win was type resolution.
-COBOL has no types. Does the* shape *of the win survive the jump?"]*
+*The Java win was type resolution. COBOL has no types — does the* shape *of the win survive the jump?*
 
 *Findings writeup — 2026-06-04. Part 4 of a series. Single-corpus, small-n; every number is
 reproducible from `bench/cobolA/` of [github.com/csharp36/cml](https://github.com/csharp36/cml).
@@ -16,7 +15,7 @@ Corpus: AWS CardDemo pinned at `59cc6c2`.*
 
 ## TL;DR
 
-[Article 3](#) ended what I'd called a trilogy with one clean result: the semantic index I'd
+[Article 3](https://medium.com/@csharp36/where-a-semantic-code-index-finally-beats-grep-type-resolved-reachability-fd8a077da688) ended what I'd called a trilogy with one clean result: the semantic index I'd
 built beats `grep` decisively on exactly one kind of question — **type-resolved reachability**,
 "list every concrete class that *is-a* `X`, transitively" — at recall 0.97 / F1 0.88 in a single
 query, versus iterative `grep` at 0.32. That win is made of *types*: it exists because a compiler
@@ -38,8 +37,6 @@ hand-audit**. The verdict, pre-registered before the run, came back **`AMBIGUOUS
 ![Five strata, grep F1 vs oracle F1. The two dynamic-dispatch strata — call_closure (0.145) and
 txn_reach (0.212) — show a chasm to the oracle's 1.000. The three static strata — data_access
 (0.749), data_coupling (0.674), copybook_fan (1.000) — show grep keeping pace.](article4-results.jpeg)
-
-*[FIGURE: results — strata bar chart, described in alt-text. Same data as the table in §7.]*
 
 The win's shape **does** transfer — but it narrows, and then narrows again under scrutiny. Where
 COBOL dispatches dynamically (a CICS menu picking the next program out of a runtime-indexed table),
@@ -222,13 +219,12 @@ ceiling*, not a model's mood on a given day.
 
 The **5 strata** are the relations that matter for carving a monolith:
 
-| # | stratum | question | gating? | key source |
-|---|---------|----------|:-------:|------------|
-| 1 | `call_closure` | every program transitively reachable from `X` via CALL + CICS XCTL/LINK | **yes** | independent audit |
-| 2 | `data_access` | every program that reads/writes physical file `R` | **yes** | oracle (grep-verifiable) |
-| 3 | `data_coupling` | every program sharing a physical file / DB2 table with `X` | **yes** | independent audit |
-| 4 | `copybook_fan` | every program that `COPY`s copybook `C` | no | oracle (grep-verifiable) |
-| 5 | `txn_reach` | every program reachable when CICS transaction `T` starts | no | independent audit |
+![The five strata over AWS CardDemo. 1 call_closure — programs transitively reachable via CALL +
+CICS XCTL/LINK (gating; keyed by independent audit). 2 data_access — programs that read/write
+physical file R (gating; oracle, grep-verifiable). 3 data_coupling — programs sharing a physical
+file or DB2 table (gating; independent audit). 4 copybook_fan — programs that COPY copybook C
+(non-gating; oracle). 5 txn_reach — programs reachable when CICS transaction T starts (non-gating;
+independent audit).](article4-strata.jpeg)
 
 80 questions total (`call_closure` 21, `data_access` 10, `data_coupling` 13, `copybook_fan` 15,
 `txn_reach` 21). The answer key is **hybrid**: the three grep-hard strata (1, 3, 5) are keyed by an
@@ -356,13 +352,10 @@ papering over it. ([`oracle2-gnucobol/CROSS-CHECK.md`](#) has the full method an
 
 Per-stratum means, scored against the hybrid key:
 
-| stratum | grep F1 | proxy F1 | n | gating |
-|---------|:------:|:--------:|:-:|:------:|
-| `call_closure` | **0.145** | 1.000 | 21 | ● |
-| `data_access`  | 0.749 | 1.000 | 10 | ● |
-| `data_coupling`| 0.674 | 1.000 | 13 | ● |
-| `copybook_fan` | 1.000 | 1.000 | 15 | |
-| `txn_reach`    | **0.212** | 1.000 | 21 | |
+![Per-stratum results. grep F1 vs proxy F1, with n and gating flag. call_closure 0.145 / 1.000,
+n=21, gating. data_access 0.749 / 1.000, n=10, gating. data_coupling 0.674 / 1.000, n=13, gating.
+copybook_fan 1.000 / 1.000, n=15. txn_reach 0.212 / 1.000, n=21. Verdict AMBIGUOUS: gating
+macro-average proxy 1.00, grep 0.523, gap 0.477.](article4-table-result.jpeg)
 
 **Pre-registered verdict** (macro-average over gating strata 1–3):
 
@@ -423,6 +416,12 @@ treat the shell (`COSGN00C` + the two menus) as a **decomposition boundary** —
 coupling doesn't propagate *through* it — and recompute every closure. (Full method and the per-node
 table: [`oracle2-gnucobol/ABLATION.md`](#).) Three things fall out, and each answers a question the
 qualitative caveat couldn't:
+
+![Two panels. Left, call_closure degeneracy as mean pairwise Jaccard of the 21 answer-sets: 0.913
+normal (through the shell) versus 0.242 with the hub ablated — the near-duplicate questions spread
+out. Right, grep's F1 on call_closure: 0.145 normal versus 0.438 with the hub ablated, essentially
+at the pre-registered 0.45 bar — most of the stratum's gap was the navigation shell, not the OCCURS
+wall.](article4-ablation.jpeg)
 
 - **The degeneracy was real and large.** Mean pairwise Jaccard drops **0.913 → 0.242**; closure
   sizes spread from a flat `[22]` to `[1..15]`. The SCC *was* doing most of the work of making the
@@ -560,4 +559,4 @@ better-measured, and that's worth crediting plainly.
 *Earlier in the series:*
 [Article 1 — implement a feature](https://medium.com/@csharp36/does-a-semantic-code-index-make-claude-code-a-better-engineer-a-controlled-experiment-c90b193204ee) ·
 [Article 2 — locate a change surface](https://medium.com/@csharp36/discovery-benchmark-semantic-index-vs-grep-find-76ee87ce12c1) ·
-Article 3 — type-resolved reachability *(link on publish)*
+[Article 3 — type-resolved reachability](https://medium.com/@csharp36/where-a-semantic-code-index-finally-beats-grep-type-resolved-reachability-fd8a077da688)
