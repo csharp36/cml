@@ -103,11 +103,11 @@ tree into the model, and the comparison is semantic, not textual.
 
 ## What the benchmarks show
 
-We ran three controlled experiments against [Hazelcast](https://github.com/hazelcast/hazelcast)
-(~2M LOC) comparing CML to a strong `grep` baseline, and published the results — including the
-ones that didn't flatter the index. The honest summary: **CML is not a faster `grep`, and on
-general tasks it doesn't beat one.** It earns its place on the *one* class of question `grep` is
-structurally blind to.
+We ran a series of controlled experiments comparing CML to a strong `grep` baseline — three
+against [Hazelcast](https://github.com/hazelcast/hazelcast) (~2M LOC) plus a cross-language probe
+on COBOL — and published the results, including the ones that didn't flatter the index. The honest
+summary: **CML is not a faster `grep`, and on general tasks it doesn't beat one.** It earns its
+place on the *one* class of question `grep` is structurally blind to.
 
 - **Where it decisively wins — type-resolved reachability.** "List every concrete type that is-a
   `X`, transitively" (all implementers / the subtype tree). Across 12 such questions scored against
@@ -124,6 +124,18 @@ structurally blind to.
   ([Article 2](https://medium.com/@csharp36/discovery-benchmark-semantic-index-vs-grep-find-76ee87ce12c1))
   were a tie-or-loss for the index, and `grep` was cheaper. For text-findable code already on your
   disk, reach for `ripgrep`.
+- **Where the win partly transfers — a COBOL probe.** We pre-registered a benchmark to ask whether
+  the reachability-completeness *shape* carries to COBOL→Java decomposition, on
+  [AWS CardDemo](https://github.com/aws-samples/aws-mainframe-modernization-carddemo) (44 programs):
+  a ProLeap-backed `cobol_reachability` oracle vs a fairly-resourced `grep`, 80 questions / 5 strata.
+  Verdict: **AMBIGUOUS** — the win is *real but narrow*. The oracle is decisive on **dynamic-dispatch
+  reachability** — CICS `XCTL` menu dispatch routed through `OCCURS`/`VALUE` tables `grep` cannot
+  enumerate (`call_closure` F1 **0.15→1.0**, `txn_reach` **0.21→1.0**) — but `grep` ties on the static
+  file/copybook relations, so the gating macro-average (gap **0.48**) doesn't clear the pre-registered
+  greenlight bar. (The independent audit also caught and fixed two real bugs in *our own* oracle before
+  the verdict, converging a 29/32 disagreement to 0.)
+  ([writeup](docs/superpowers/results/2026-06-03-cobol-decomposition-findings.md), harness in
+  [`bench/cobolA/`](bench/cobolA/))
 
 **Bottom line:** use CML as a *type-resolution oracle* — *who implements this, what are its
 subtypes, what's the hierarchy* — answered in one call across code too large (or not local enough)
