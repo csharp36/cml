@@ -46,8 +46,11 @@ menu picking the next program out of a runtime-indexed table), the oracle is dec
 falls off a cliff: F1 ~0.15–0.21 → 1.00. Where COBOL is static (which file a program reads, which
 copybook it includes), a careful `grep` user keeps pace and the oracle wins only on *convenience*,
 not *completeness*. Averaged across the gating strata, that mix lands at AMBIGUOUS: a real
-differentiator that doesn't blanket the whole problem. Below is the whole thing, including the
-part where an independent audit caught two bugs in my own oracle before I could ship a verdict.
+differentiator that doesn't blanket the whole problem. Below is the whole thing, including the part
+where an independent audit caught two bugs in my own oracle — and where, because that audit and the
+oracle shared one (first-time-COBOL) mind, I brought in a **second oracle built on a different
+compiler** to check the first. It agrees 44/44, which says the edges are read correctly; it can't say
+the edges were the right ones to count, and I'll be clear about that line.
 
 ---
 
@@ -81,6 +84,14 @@ that beats `grep` on the questions that matter for decomposition? And would it b
 right reason — completeness over a graph — or just because I'd hand-tuned it to a corpus I'd peeked
 at?
 
+I want to be honest that this outsider framing cuts **both** ways, because it matters for how much
+you should trust what follows. On one side it's a guard against hand-tuning: I couldn't have
+reverse-engineered the oracle to flatter a corpus I didn't understand. On the other side it raises a
+real worry — the validation rests on a hand-audit, and *I wrote the audit too*. A first-time reader
+checking his own first-time-reader's extractor is exactly the setup where a shared misunderstanding
+slips through unseen. I'll come back to this at the audit, take it seriously, and bring in a second
+toolchain to attack it — because it's the load-bearing weakness of the whole study, not a footnote.
+
 ## 2. The corpus: AWS CardDemo
 
 You cannot run an honest benchmark on a codebase you can't fully check, and you cannot get real
@@ -102,10 +113,14 @@ What's in it:
   plus a small **IMS/MQ** authorization sub-app.
 
 Two properties made it the right test bed. It's **clean enough** that ProLeap — an open-source COBOL
-parser — parses **44 of 44** programs without choking, so I could build a real graph from it. And
-it's **small enough to hand-audit**: 44 programs is a quantity a human reviewer can read end to end
-in source, which (spoiler) is what saved the result. I pinned everything — source index, oracle, and
-answer key — to a single commit (`59cc6c2`) so there's zero version skew between the arms.
+parser — parses **44 of 44** programs without choking, so I could build a real graph from it. (Worth
+saying plainly, because it's easy to misread: 44/44 *parsing* is necessary, not sufficient. It means
+the front end didn't choke — it says nothing about whether the graph I extracted from the parse is
+*correct*. Both bugs I'll describe below were post-parse extraction bugs, sitting downstream of a
+perfectly happy 44/44.) And it's **small enough to hand-audit**: 44 programs is a quantity a human
+reviewer can read end to end in source, which (spoiler) is what saved the result. I pinned everything
+— source index, oracle, and answer key — to a single commit (`59cc6c2`) so there's zero version skew
+between the arms.
 
 The honest cost of that cleanliness shows up later as a caveat: CardDemo is *tidier* than a real
 50-year-old estate, and one of its structural quirks (a navigationally-complete menu) makes the
@@ -247,17 +262,77 @@ Instead I treated every disagreement as a bug report and chased each one back to
 
 I fixed both **at the root** — the `XCTL` regex, transitive constant propagation through copy
 `MOVE`s, and ddname-based file identity — as principled corrections a correct reachability oracle
-*should* have, **not** as patches tuned to make the audit agree. The distinction matters: after the
-fixes, the independently-derived key and the oracle **converged to zero residual deltas across all 55
-audited questions.**
+*should* have, **not** as patches tuned to make the audit agree. After the fixes, the
+independently-derived key and the oracle converged.
 
-That convergence is the validation, and it's load-bearing *precisely because the pre-fix audit
-disagreed 29/32.* The proxy arm scores ~1.0 on the audited strata not by construction but because an
-independent reading of the source confirmed the oracle correct after the fixes. Which is also why,
-in the verdict below, the numbers I lean on are **`grep`'s F1 and the gap** — not the proxy's near-
-perfect score, which is a "perfect delivery" baseline, not evidence.
+Now the honest accounting, because the convergence is the load-bearing claim of the whole study and
+the first draft of this article overstated it. Three things you should know, all checkable in the git
+history (`bench/cobolA`, `audit/KEY-AUDIT.md`):
 
-## 6. Results
+- **The disagreement-then-convergence evidence lives on a *frozen* set of 32 questions.** The key for
+  those 32 was committed *before* the oracle fixes — genuinely blind. 29 of 32 disagreed; after the
+  two fixes, 0 of 32 disagreed. That sequence — frozen key, large disagreement, principled fix, clean
+  convergence — is real corroboration, and it's the part I stand behind.
+- **The key was then extended from 32 to 55 questions *after* the fixes.** The benchmark you'll see
+  scored below uses 55 audited questions; the 23 added ones were derived post-fix, from the
+  already-corrected structure. They're consistency checks *inside* the converged model, not fresh
+  blind tests — so the "29/32 → 0" signal belongs to the 32, and I shouldn't (and now don't) wave a
+  "0 across all 55" banner as if all 55 carried it. (The genuinely ambiguous cases — commarea
+  "return to whoever called me" targets — were *excluded* as declared ceilings rather than left as
+  residual deltas, which is part of why the remainder looks so clean.)
+- **One person wrote both the oracle and the audit — me, the first-time COBOL reader.** So the audit
+  is *method*-independent (hand-reading source vs running ProLeap) but not *mind*-independent. It
+  caught the two bugs precisely because the two *methods* diverged there. What it structurally cannot
+  catch is a modeling choice I got *consistently* wrong in both. And there's a live one: counting a
+  **signoff** `XCTL` (`screen → COSGN00C → re-dispatch`) as a reachability edge is a *decision*, and
+  it's the dominant driver of the win — it's what collapses the whole online tier into one
+  mutually-reachable cluster. Both the oracle and my audit make that same choice; their agreement
+  cannot validate it. If it's the wrong relation for decomposition, both are wrong together, invisibly.
+
+That last point is the real hole, and "I treated the oracle's answers as a hypothesis to refute" —
+true as it is — doesn't close it, because the refuter and the refuted share a skull. So I did the one
+thing that actually attacks a shared-mind blind spot: I brought in a second toolchain that doesn't
+share my parse.
+
+## 6. The second oracle: a different compiler, to break the common mode
+
+The two bugs the audit caught were both **post-parse extraction** bugs — a regex that missed
+`PROGRAM (` with a space, a keying choice that confused logical and physical file names. That's the
+layer to attack independently. So I built a second oracle from a deliberately different lineage and
+diffed it against the first, *without* tuning it to agree.
+
+The first oracle's front end is **ProLeap** (an ANTLR/Java COBOL parser). The second uses
+**GnuCOBOL** (`cobc` — a C compiler, unrelated codebase) as the front end: I run its preprocessor
+over all 44 programs to do the fixed-format column handling, continuation-line joining, and `COPY`
+expansion — *including* the `OCCURS` menu copybooks — and then a freshly-written extractor (different
+code, blind to the first oracle's answers) re-derives the edges from that compiler-normalized text.
+The point is that the layer where bug #1 lived — turning fixed-format COBOL with continuation lines
+into clean tokens — is now done by an independent compiler, not by my regex. If my normalization had
+been quietly wrong, the two would disagree.
+
+They don't. Corpus-filtered to the 44 programs, the two oracles agree on **44/44 programs** on all
+three layers that matter — resolved control edges, transitive call closure, and data coupling. The
+agreement is rich, not vacuous: `COMEN01C` resolves to its 12 direct edges and a 22-program closure
+on both; the bug-2 case `CBTRN03C` couples to `{CBTRN01C, CBTRN02C}` and *not* `CBACT04C` on both.
+
+And — because a test that can't fail proves nothing — I checked that the cross-check has teeth.
+Re-inject bug #1 into the second extractor (require `PROGRAM(` with no space) and `COSGN00C`
+collapses to zero edges again, and **21 of 44 programs** immediately disagree with the first oracle,
+the signoff-bridge collapse rippling through every closure. So the second toolchain *would* have
+shouted if ProLeap still had the bug. It doesn't shout. That independently confirms the two audited
+bugs are really fixed — by a parser that shares none of my code.
+
+Here's the part I have to be straight about, though, because it's the same discipline the rest of
+this demands: **this hardens the parsing layer, not the modeling layer.** I wrote the second
+extractor *after* the audit, knowing the answers, so it encodes the *same* modeling choices —
+signoff-as-edge, ddname-as-identity, commarea-as-ceiling. Two implementations agreeing that the edges
+are correctly read from source is real and worth having; it is *not* a second opinion on whether
+those were the right edges to count. The residual fix for *that* — the thing neither a hand-audit nor
+a second extractor I write can provide — is a COBOL-literate human reading the relation definitions,
+or an orthogonal method like an actual CICS-aware compile-and-trace. I'm flagging the gap rather than
+papering over it. ([`oracle2-gnucobol/CROSS-CHECK.md`](#) has the full method and the negative control.)
+
+## 7. Results
 
 Per-stratum means, scored against the hybrid key:
 
@@ -282,7 +357,7 @@ even though scoring only the two strata `grep` structurally cannot close (`call_
 `txn_reach`) would have handed me a triumphant headline of proxy 1.00 vs `grep` ~0.18. The honest
 verdict is the AMBIGUOUS one.
 
-## 7. Where the win is — and where it isn't
+## 8. Where the win is — and where it isn't
 
 **Decisive: dynamic-dispatch reachability.** `call_closure` (grep 0.145) and `txn_reach` (grep
 0.212) are the strata defined by the `OCCURS`-table dispatch from §3. This is the `COMEN01C` case —
@@ -304,7 +379,7 @@ substrate the way type resolution blankets "find all implementers" in Java. In J
 structural question routed through the type graph. In COBOL, only some of the decomposition questions
 route through a graph `grep` can't close — and the rest are honest literal lookups.
 
-## 8. A structural caveat about CardDemo itself
+## 9. A structural caveat about CardDemo itself
 
 There's a subtlety I have to surface rather than hide, because it argues against my own headline.
 CardDemo's online tier is a **navigationally-complete menu system**: every screen returns to the menu
@@ -320,18 +395,23 @@ degenerate, repetitive relation" is weaker evidence than "wins a discriminating 
 0.477 gap rests on the same menu structure measured many times. I flag it rather than let the headline
 number stand unqualified.
 
-## 9. The honest caveats
+## 10. The honest caveats
 
 I spent three articles refusing to oversell. Not starting now.
 
 - **One small, clean corpus.** 44 programs, single sample. CardDemo is tidy *by construction*; real
   mainframe estates are messier — multiple dialects, copybook sprawl, genuinely dynamic `CALL`s whose
   targets aren't statically knowable at all.
-- **SCC degeneracy** (§8): the two strata carrying the win are near-uniform on this corpus, so the
+- **SCC degeneracy** (§9): the two strata carrying the win are near-uniform on this corpus, so the
   wide gap leans substantially on one repeated structure.
-- **Proxy F1 ≈ 1.0 by construction.** The proxy serves the (independently-validated) oracle; its
-  score is a "perfect delivery" baseline, not evidence about robustness. The evidence is `grep`'s
-  shortfall and the gap.
+- **Proxy F1 ≈ 1.0 by construction.** The proxy serves the oracle; its score is a "perfect delivery"
+  baseline, not evidence about robustness. The evidence is `grep`'s shortfall and the gap.
+- **The oracle's validation is method- and toolchain-independent, but not yet mind-independent**
+  (§5–6). A frozen 32-question blind audit (29/32 → 0 after two principled fixes) plus a second
+  GnuCOBOL-lineage extractor (44/44 agreement, with a negative control proving it could have caught
+  the bug) corroborate that the edges are *correctly extracted from source*. They do **not**
+  adjudicate the *modeling* choices (signoff-as-edge, ddname-identity) — both checks share my COBOL
+  mental model. That residual rests on one head until a COBOL-literate reader weighs in.
 - **Thin gating stratum.** `data_access` has only n=10 after physical-file keying.
 - **Make-vs-buy.** Commercial and academic COBOL dependency analyzers already exist. This benchmark
   does **not** claim CML resolves COBOL reachability *better* than they do. Its distinct claim is
@@ -339,20 +419,22 @@ I spent three articles refusing to oversell. Not starting now.
   vs `grep`'s multi-step BFS) gives a coding agent a token-efficient, complete answer to a question
   `grep` cannot close. The claim is **MCP-native delivery**, not COBOL parsing.
 
-## 10. So: did the win cross the barrier?
+## 11. So: did the win cross the barrier?
 
 After four experiments, here's the fair answer. The win **crossed — and narrowed.** What transferred
 was never "type resolution" (COBOL has no types) but the deeper thing underneath it: *an index earns
-its keep exactly where it can close a graph `grep` is structurally blind to.* In COBOL, that's
-**dynamic call and transaction reachability** — the CICS `XCTL`-through-`OCCURS` dispatch where
-`grep` sees 2 edges and the truth has 22. There, the oracle is decisive, and it's decisive for the
-*same structural reason* it won in Java.
+its keep exactly where it can close a graph `grep` is structurally blind to.* That reframing is the
+durable takeaway, and it travels past this corpus: it turns "should I build a semantic index?" into a
+sharper question — *what fraction of my codebase is a graph text can't traverse?* In Java, the answer
+is "most of it" (the type graph is everywhere), so the index blankets the codebase. In COBOL, the
+answer is "a slice" — **dynamic call and transaction reachability**, the CICS `XCTL`-through-`OCCURS`
+dispatch where `grep` sees 2 edges and the truth has 22. There, the oracle is decisive, for the *same
+structural reason* it won in Java. Elsewhere — which file, which copybook — the relations are honest
+literal lookups where a careful `grep` ties. Same tool, same principle, different *coverage*, because
+the languages hide different fractions of themselves from text.
 
-But the analogy stops being flattering right after that. In Java, the type graph was *most* of the
-structural surface, so one win blanketed the codebase. In COBOL, the dispatch graph is one relation
-among several, and the others — which file, which copybook — are honest literal lookups where a
-careful `grep` ties. So the pre-registered verdict is **AMBIGUOUS**, and I'm reporting it that way
-rather than cherry-picking the two strata that would've read as a rout.
+So the pre-registered verdict is **AMBIGUOUS**, and I'm reporting it that way rather than
+cherry-picking the two strata that would've read as a rout.
 
 If someone asked me whether to build full COBOL support into the index on this evidence, I'd say
 **not yet** — and I'd scope the claim if they pursued it. Pitch any COBOL capability as exactly what
@@ -366,8 +448,9 @@ relations, where `grep` keeps up. Two honest next paths:
 2. **Scope the claim** as above if it's pursued at all.
 
 Either way, the study did the job it was designed to do: take a win proven in one language, carry it
-to a language I'd never written, and find out — cheaply, pre-registered, and with an independent audit
-that caught my own bugs — *exactly* how much of it survived the trip. Not "the index beats grep at
+to a language I'd never written, and find out — cheaply, pre-registered, with an independent audit
+that caught my own bugs and a second-compiler cross-check that confirmed the fixes — *exactly* how
+much of it survived the trip. Not "the index beats grep at
 COBOL." The truer, smaller headline: **the shape of the win crosses the language barrier, but only
 where COBOL hides its graph from text — and on this corpus, that's a real edge that doesn't yet earn
 a build.**
@@ -380,7 +463,10 @@ a build.**
 - Corpus: [AWS CardDemo](https://github.com/aws-samples/aws-mainframe-modernization-carddemo) pinned
   at `59cc6c2` (`bench/cobolA/clone_corpus.sh`, `pin.env`).
 - Oracle: `oracle/extractor` (Java/ProLeap parses 44/44) → `oracle/build_oracle.py` → `oracle/oracle.json`.
-- Independent answer key + provenance: `audit/hard_strata_key.json`, `audit/KEY-AUDIT.md`.
+- Independent answer key + provenance (incl. the 32→55 freeze-order): `audit/hard_strata_key.json`, `audit/KEY-AUDIT.md`.
+- Second-oracle cross-check (different lineage): `oracle2-gnucobol/` — `preprocess.sh` (GnuCOBOL
+  `cobc -E`) → `extract_edges.py` → `diff_oracles.py` (44/44 agreement; negative control 21/44);
+  method + limits in `oracle2-gnucobol/CROSS-CHECK.md`.
 - Questions: `select_questions.py` → `questions.jsonl` (80 across 5 strata).
 - Arms + score: `arms/` (fair-grep vs `cobol_reachability` MCP proxy), `score.py`, `run_all.sh`.
 - Full result doc with per-stratum detail: `docs/superpowers/results/2026-06-03-cobol-decomposition-findings.md`.
