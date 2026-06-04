@@ -311,3 +311,10 @@ class TestDataCouplingNeighbors:
         assert n["D"] == {"C"}
         # copybook-only sharing must NOT create coupling (that is stratum 4)
         assert "C" not in n["A"]
+
+
+def test_transitive_closure_excludes_direct_self_transfer():
+    # A program that XCTLs to itself (redisplay-current-screen) must not appear
+    # in its own closure. B is a real other target.
+    edges = {"A": {"static_xctl_link": ["A", "B"]}, "B": {"static_xctl_link": []}}
+    assert transitive_call_closure(edges, "A") == {"B"}

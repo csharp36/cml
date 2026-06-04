@@ -38,9 +38,11 @@ def transitive_call_closure(edges_map: dict[str, dict], start: str) -> set[str]:
     visited: set[str] = set()
     queue: deque[str] = deque()
 
-    # Seed from start's direct neighbours without adding start to visited yet
+    # Seed from start's direct neighbours. Exclude a direct self-transfer
+    # (a program may XCTL to itself, e.g. a "redisplay current screen" path):
+    # by definition the start is never a member of its own closure.
     for target in call_edges(edges_map.get(start, {})):
-        if target not in visited:
+        if target != start and target not in visited:
             visited.add(target)
             queue.append(target)
 
