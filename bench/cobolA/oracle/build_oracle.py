@@ -2,7 +2,7 @@
 build_oracle.py — turns raw-edges.json into the ground-truth oracle.json.
 
 Usage:
-    python3 build_oracle.py raw-edges.json oracle.json
+    python3 build_oracle.py raw-edges.json oracle.json [corpus_dir]
 
 Output is deterministic (all lists sorted) so re-running produces a zero diff.
 """
@@ -104,7 +104,7 @@ def build_oracle(edges_map: dict[str, dict], txn_entry: dict[str, str] | None = 
     # ---- txn -> reachable programs = {entry} U closure(entry) -----------
     txn_reach: dict[str, list[str]] = {}
     for txn, entry in cics_txn_entry.items():
-        reach = ({entry} | transitive_call_closure(edges_map, entry)) & prog_set
+        reach = ({entry} | set(transitive[entry])) & prog_set
         txn_reach[txn] = sorted(reach)
 
     # ---- direct call edges (per program) --------------------------------
@@ -140,7 +140,7 @@ def main() -> None:
     in_path, out_path = sys.argv[1], sys.argv[2]
     corpus_dir = sys.argv[3] if len(sys.argv) == 4 else "../corpus"
     edges_map = load_edges(in_path)
-    from csd import parse_csd_dir
+    from csd import parse_csd_dir  # deferred: build_oracle() stays csd-free for unit tests
     txn_entry = parse_csd_dir(corpus_dir)
     oracle = build_oracle(edges_map, txn_entry)
     Path(out_path).write_text(json.dumps(oracle, indent=2, sort_keys=False) + "\n", encoding="utf-8")
