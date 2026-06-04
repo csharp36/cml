@@ -115,9 +115,15 @@ public final class ProgramExtractor {
         Map<String, Set<String>> fieldLiterals = new HashMap<>();
         collectValueInitializers(program, fieldLiterals);
 
+        // Fix 2: copy edges for identifier-source MOVEs (target field -> {source field names}).
+        // Populated by recordCopyEdges() during the statement walk; used after fieldLiterals is
+        // fully built to propagate constants transitively (e.g. LIT-MENUPGM -> CDEMO-TO-PROGRAM).
+        Map<String, Set<String>> copyEdges = new HashMap<>();
+
         for (Statement stmt : collectStatements(program)) {
             if (stmt instanceof MoveStatement ms) {
                 handleMove(ms, fieldLiterals);
+                recordCopyEdges(ms, copyEdges);
             } else if (stmt instanceof CallStatement cs) {
                 handleCall(cs, staticCalls, dynamicCalls);
             } else if (stmt instanceof ExecCicsStatement cics) {
@@ -161,6 +167,38 @@ public final class ProgramExtractor {
             Map<String, Set<String>> rawMoves = scanMoveLiterals(rawSource);
             for (Map.Entry<String, Set<String>> e : rawMoves.entrySet()) {
                 fieldLiterals.computeIfAbsent(e.getKey(), k -> new LinkedHashSet<>()).addAll(e.getValue());
+            }
+            // Fix 1: raw-source VALUE-initializer fallback. UNION VALUE 'literal' fields from the
+            // raw source into fieldLiterals. This recovers fields that collectValueInitializers()
+            // missed because the data division didn't fully parse (e.g. COPAUS1C with IMS/DB2/MQ
+            // vendor copybooks absent). Purely additive — same semantics as scanMoveLiterals above.
+            Map<String, Set<String>> rawValues = scanValueInitializers(rawSource);
+            for (Map.Entry<String, Set<String>> e : rawValues.entrySet()) {
+                fieldLiterals.computeIfAbsent(e.getKey(), k -> new LinkedHashSet<>()).addAll(e.getValue());
+            }
+        }
+
+        // Fix 2: transitive copy propagation fixpoint. After fieldLiterals is fully built (VALUE
+        // inits + literal MOVEs + raw fallbacks), propagate constants through identifier-source
+        // MOVE edges: if MOVE A TO B, then fieldLiterals[B] |= fieldLiterals[A]. Iterate until
+        // stable (bounded: at most #fields passes; terminates because sets only grow and are finite).
+        if (!copyEdges.isEmpty()) {
+            boolean changed = true;
+            while (changed) {
+                changed = false;
+                for (Map.Entry<String, Set<String>> edge : copyEdges.entrySet()) {
+                    String target = edge.getKey();
+                    for (String source : edge.getValue()) {
+                        Set<String> sourceLits = fieldLiterals.get(source);
+                        if (sourceLits != null && !sourceLits.isEmpty()) {
+                            Set<String> targetLits = fieldLiterals.computeIfAbsent(
+                                    target, k -> new LinkedHashSet<>());
+                            if (targetLits.addAll(sourceLits)) {
+                                changed = true;
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -228,6 +266,51 @@ public final class ProgramExtractor {
         return out;
     }
 
+    /**
+     * Raw-source fallback for VALUE-initializer collection: scan fixed-format COBOL text for
+     * {@code VALUE 'literal'} data-item declarations and return {@code field -> {literals}}.
+     *
+     * <p>Mirrors {@link #scanMoveLiterals(String)} in purpose and column-stripping logic. This is a
+     * backstop for {@link #collectValueInitializers(Program, Map)}: when ProLeap fails to fully parse
+     * the data division (e.g. IMS/MQ programs with absent vendor copybooks), the parsed ctx text is
+     * incomplete and VALUE clauses are missed. Scanning the raw source recovers them. The result is
+     * always UNIONed with (never replaces) the ASG path, so it can only add correct field→literal
+     * mappings.
+     */
+    public static Map<String, Set<String>> scanValueInitializers(String rawSource) {
+        Map<String, Set<String>> out = new HashMap<>();
+        if (rawSource == null || rawSource.isEmpty()) {
+            return out;
+        }
+        StringBuilder code = new StringBuilder();
+        for (String line : rawSource.split("\n", -1)) {
+            if (!line.isEmpty() && line.charAt(line.length() - 1) == '\r') {
+                line = line.substring(0, line.length() - 1);
+            }
+            if (line.length() >= 7) {
+                char indicator = line.charAt(6);
+                if (indicator == '*' || indicator == '/') {
+                    continue;
+                }
+            }
+            if (line.length() > 7) {
+                int end = Math.min(line.length(), 72);
+                code.append(line, 7, end);
+            }
+            code.append(' ');
+        }
+        Matcher m = VALUE_INIT.matcher(code);
+        while (m.find()) {
+            String field = m.group(1);
+            String literal = m.group(2);
+            if (field != null && literal != null && !literal.isEmpty()) {
+                out.computeIfAbsent(field.toUpperCase(java.util.Locale.ROOT), k -> new LinkedHashSet<>())
+                        .add(literal);
+            }
+        }
+        return out;
+    }
+
     // ---- MOVE (constant propagation source) -----------------------------------
 
     /**
@@ -256,6 +339,39 @@ public final class ProgramExtractor {
             String field = callName(receiver);
             if (field != null) {
                 fieldLiterals.computeIfAbsent(field, k -> new LinkedHashSet<>()).add(literal);
+            }
+        }
+    }
+
+    /**
+     * Fix 2: Record identifier-source MOVE edges into the copy-edge map for transitive propagation.
+     * Called for every {@link MoveStatement} alongside {@link #handleMove} (which handles literal
+     * sources). When the sending area is an identifier (a {@link CallValueStmt}), records
+     * {@code target -> source} so that after {@code fieldLiterals} is fully built, a fixpoint pass
+     * can propagate: if {@code MOVE A TO B}, then {@code fieldLiterals[B] |= fieldLiterals[A]}.
+     * Only records when both source and target names are resolvable; silently skips otherwise.
+     */
+    private static void recordCopyEdges(MoveStatement ms, Map<String, Set<String>> copyEdges) {
+        MoveToStatement to = ms.getMoveToStatement();
+        if (to == null || to.getSendingArea() == null) {
+            return;
+        }
+        ValueStmt sending = to.getSendingArea().getSendingAreaValueStmt();
+        if (!(sending instanceof CallValueStmt cvs)) {
+            return; // literal source — handled by handleMove, not here
+        }
+        String sourceName = callName(cvs.getCall());
+        if (sourceName == null) {
+            return;
+        }
+        List<Call> receivers = to.getReceivingAreaCalls();
+        if (receivers == null) {
+            return;
+        }
+        for (Call receiver : receivers) {
+            String targetName = callName(receiver);
+            if (targetName != null) {
+                copyEdges.computeIfAbsent(targetName, k -> new LinkedHashSet<>()).add(sourceName);
             }
         }
     }

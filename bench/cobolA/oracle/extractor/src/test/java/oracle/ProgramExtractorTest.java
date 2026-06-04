@@ -96,6 +96,31 @@ class ProgramExtractorTest {
     }
 
     /**
+     * Fix 2 (transitive copy propagation): MOVE ident TO field must flow VALUE constants
+     * transitively. LIT-NEXT has VALUE 'TARGETPG'; MOVE LIT-NEXT TO WS-DEST; XCTL PROGRAM(WS-DEST)
+     * must resolve to TARGETPG via: LIT-NEXT -> WS-DEST -> XCTL.
+     *
+     * <p>The rawSource is provided (matching the production code path in Main/ExtractionRunner)
+     * because collectValueInitializers() reads compressed ANTLR ctx text (no whitespace between
+     * tokens), which the VALUE_INIT pattern cannot match; scanValueInitializers() on the raw source
+     * recovers the VALUE initializer and feeds it into the copy-propagation fixpoint.
+     */
+    @Test
+    void transitiveCopyPropagatesValueConstant() throws Exception {
+        URL url = ProgramExtractorTest.class.getClassLoader().getResource("cobol/constchain.cbl");
+        String rawSource = java.nio.file.Files.readString(java.nio.file.Paths.get(url.toURI()));
+        Program program = parseResource("cobol/constchain.cbl");
+
+        ProgramEdges e = new ProgramExtractor().extract(
+                program, "CONSTCHAIN", java.util.Collections.emptySet(), rawSource);
+
+        assertTrue(
+                e.resolvedDynamicXctlLink != null && e.resolvedDynamicXctlLink.contains("TARGETPG"),
+                "expected TARGETPG in resolvedDynamicXctlLink via copy chain, got=" + e.resolvedDynamicXctlLink
+                        + " dynamic_xctl_idents=" + e.dynamicXctlIdents);
+    }
+
+    /**
      * Defect 2: a raw-source MOVE-literal scan is the union fallback for ProLeap parse omissions.
      * It must be fixed-format aware (skip column-7 comment lines) and key the receiving field
      * (upper-cased) to the set of literal values moved into it.
