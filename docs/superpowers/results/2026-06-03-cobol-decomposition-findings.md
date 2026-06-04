@@ -127,6 +127,10 @@ numbers in the verdict are consequently `grep`'s F1 and the gap, not the proxy's
 | `copybook_fan` | 1.000 | 1.000 | 15 | |
 | `txn_reach`    | **0.212** | 1.000 | 21 | |
 
+*(Per-stratum means are `score.py`'s mean-then-round outputs, reproducible via
+`run_all.sh`. Averaging the already-rounded `results.csv` column can differ by ±0.001 —
+e.g. `txn_reach` reads 0.211 that way; neither value is gating.)*
+
 **Pre-registered verdict (macro-avg over gating strata 1–3):**
 
 ```json
