@@ -8,7 +8,7 @@ edges_map: dict[str, dict]
       copybooks, files_read, files_written, db2_tables
 """
 from __future__ import annotations
-from collections import deque
+from collections import deque, defaultdict
 
 
 def call_edges(prog_obj: dict) -> set[str]:
@@ -98,3 +98,22 @@ def shared_data_coupling(
             resources_b |= _resources(edges_map[pid])
 
     return resources_a & resources_b
+
+
+def data_coupling_neighbors(edges_map: dict[str, dict]) -> dict[str, set[str]]:
+    """Return {program: set of OTHER programs sharing >=1 file/DB2 resource}.
+
+    Copybooks are deliberately excluded — shared record layouts are stratum 4;
+    stratum 3 is coupling through a mutable data store, which is what resists a
+    clean service split.
+    """
+    res_to_progs: dict[str, set[str]] = defaultdict(set)
+    for pid, obj in edges_map.items():
+        for res in _resources(obj):
+            res_to_progs[res].add(pid)
+
+    neighbors: dict[str, set[str]] = {pid: set() for pid in edges_map}
+    for group in res_to_progs.values():
+        for pid in group:
+            neighbors[pid] |= group - {pid}
+    return neighbors
