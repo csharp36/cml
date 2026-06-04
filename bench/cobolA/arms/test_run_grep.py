@@ -22,3 +22,14 @@ def test_data_coupling_finds_costakeholders_of_a_file():
 def test_txn_reach_resolves_entry_then_closes():
     q = {"id": "txn_reach__DR00", "stratum": "txn_reach", "node": "DR00"}
     assert answer_question(q, FIX) == {"DRIVER", "WORKER", "SCREEN"}
+
+def test_data_access_resolves_logical_to_ddname():
+    # BATCHA: SELECT LEDGER-FILE ASSIGN TO LEDGERA; READ LEDGER-FILE -> ddname LEDGERA
+    q = {"id": "data_access__LEDGERA", "stratum": "data_access", "node": "LEDGERA"}
+    assert answer_question(q, FIX) == {"BATCHA"}
+
+def test_data_coupling_not_fooled_by_shared_logical_name():
+    # BATCHA and BATCHB both READ LEDGER-FILE (same logical) but map to LEDGERA vs LEDGERB
+    # -> different physical ddnames -> NOT coupled with each other
+    q = {"id": "data_coupling__BATCHA", "stratum": "data_coupling", "node": "BATCHA"}
+    assert "BATCHB" not in answer_question(q, FIX)

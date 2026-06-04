@@ -27,6 +27,7 @@ _FILE_OP = re.compile(r"(?<![A-Za-z0-9-])(?:READ|WRITE|REWRITE|DELETE|START)\s+(
                       re.I)
 _CICS_FILE = re.compile(r"\bEXEC\s+CICS\s+(?:READ|WRITE|REWRITE|DELETE|STARTBR)\b[^.]*?"
                         r"(?:FILE|DATASET)\s*\(\s*['\"]?([A-Z0-9][A-Z0-9-]*)['\"]?", re.I | re.S)
+_SELECT = re.compile(r"\bSELECT\s+([A-Z0-9][A-Z0-9-]*)\s+ASSIGN\s+TO\s+([A-Z0-9][A-Z0-9-]*)", re.I)
 _COPY = re.compile(r"(?<![A-Za-z0-9-])COPY\s+([A-Z0-9][A-Z0-9-]*)", re.I)
 _TXN = re.compile(r"DEFINE\s+TRANSACTION\(([A-Z0-9$@#]+)\)", re.I)
 _CSD_PGM = re.compile(r"\bPROGRAM\(([A-Z0-9$@#]+)\)", re.I)
@@ -65,8 +66,32 @@ def _direct_targets(code: str) -> set[str]:
 
 
 def _resources(code: str) -> set[str]:
-    return ({m.group(1).upper() for m in _FILE_OP.finditer(code)}
-            | {m.group(1).upper() for m in _CICS_FILE.finditer(code)})
+    """Return set of PHYSICAL ddnames (from SELECT/ASSIGN) used by this program.
+
+    For each logical file name found via READ/WRITE/etc., translate through the
+    SELECT ... ASSIGN TO mapping to get the physical ddname.  If no SELECT clause
+    exists for that name, keep the raw name as-is (pass-through, so fixtures and
+    corpora without FILE-CONTROL still work).  CICS FILE('ddname') references are
+    already physical — kept as-is.
+    """
+    # Build logical -> ddname map from SELECT ... ASSIGN TO clauses
+    logical_to_ddname: dict[str, str] = {}
+    for m in _SELECT.finditer(code):
+        logical = m.group(1).upper()
+        ddname = m.group(2).upper()
+        logical_to_ddname[logical] = ddname
+
+    # Batch file-op names: translate through map where possible
+    result: set[str] = set()
+    for m in _FILE_OP.finditer(code):
+        name = m.group(1).upper()
+        result.add(logical_to_ddname.get(name, name))
+
+    # CICS FILE/DATASET references are already physical ddnames
+    for m in _CICS_FILE.finditer(code):
+        result.add(m.group(1).upper())
+
+    return result
 
 
 def answer_question(q: dict, corpus_dir: str) -> set[str]:
