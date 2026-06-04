@@ -346,7 +346,7 @@ are correctly read from source is real and worth having; it is *not* a second op
 those were the right edges to count. The residual fix for *that* — the thing neither a hand-audit nor
 a second extractor I write can provide — is a COBOL-literate human reading the relation definitions,
 or an orthogonal method like an actual CICS-aware compile-and-trace. I'm flagging the gap rather than
-papering over it. ([`oracle2-gnucobol/CROSS-CHECK.md`](#) has the full method and the negative control.)
+papering over it. ([`oracle2-gnucobol/CROSS-CHECK.md`](https://github.com/csharp36/cml/blob/main/bench/cobolA/oracle2-gnucobol/CROSS-CHECK.md) has the full method and the negative control.)
 
 ## 7. Results
 
@@ -414,7 +414,7 @@ out into a service, the fact that it can "reach" `COCRDLIC` only by navigating *
 does not couple them — the menu hub is precisely where you'd cut. So I ran the obvious experiment:
 treat the shell (`COSGN00C` + the two menus) as a **decomposition boundary** — reachable, but
 coupling doesn't propagate *through* it — and recompute every closure. (Full method and the per-node
-table: [`oracle2-gnucobol/ABLATION.md`](#).) Three things fall out, and each answers a question the
+table: [`oracle2-gnucobol/ABLATION.md`](https://github.com/csharp36/cml/blob/main/bench/cobolA/oracle2-gnucobol/ABLATION.md).) Three things fall out, and each answers a question the
 qualitative caveat couldn't:
 
 ![Two panels. Left, call_closure degeneracy as mean pairwise Jaccard of the 21 answer-sets: 0.913
