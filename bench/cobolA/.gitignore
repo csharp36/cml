@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 oracle/extractor/.gradle/
 oracle/extractor/build/
+# GnuCOBOL cross-check: normalized output is reproducible from preprocess.sh
+oracle2-gnucobol/normalized/
 # Un-ignore results dir but keep intermediate JSONL out
 !results/
 results/*.results.jsonl
